@@ -1,3 +1,22 @@
+/**
+ * src/routes/index.tsx
+ * ============================================================================
+ * 📊 PÁGINA PRINCIPAL — DASHBOARD DE SUPORTE TÉCNICO
+ * ============================================================================
+ *
+ * Esta é a tela única deste projeto. Ela é responsável por:
+ *   1. Buscar os dados (via `fetchDashboard` em src/lib/dashboard-api.ts).
+ *      → É lá que você troca o mock pela API real.
+ *   2. Controlar o estado da interface (período selecionado, loading, erro).
+ *   3. Atualizar automaticamente os dados a cada 60 segundos.
+ *   4. Renderizar o cabeçalho, os KPIs, os gráficos e o ranking.
+ *
+ * Está organizada em pequenos sub-componentes (Header, KpiGrid, HourlyChart...)
+ * todos definidos no MESMO arquivo para facilitar a leitura linear por quem
+ * está começando. Em um projeto maior, cada um viraria seu próprio arquivo.
+ * ============================================================================
+ */
+
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -13,9 +32,10 @@ import {
   Tooltip,
   XAxis,
   YAxis,
-} from "recharts";
+} from "recharts"; // biblioteca de gráficos baseada em React + SVG
 import {
   Activity,
+  AlertCircle,
   CheckCircle2,
   Clock,
   Inbox,
@@ -25,12 +45,14 @@ import {
   Trophy,
   UserCheck,
   Zap,
-} from "lucide-react";
+} from "lucide-react"; // ícones SVG
 import { KpiCard } from "@/components/dashboard/KpiCard";
 import { ChartCard } from "@/components/dashboard/ChartCard";
-import { generateData, PERIOD_LABELS, type PeriodKey } from "@/lib/dashboard-data";
+import { PERIOD_LABELS, type DashboardData, type PeriodKey } from "@/lib/dashboard-data";
+import { fetchDashboard } from "@/lib/dashboard-api"; // 🔌 ponto de integração com a API
 import { cn } from "@/lib/utils";
 
+// Registro da rota "/" no TanStack Router + metatags SEO.
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
@@ -43,8 +65,13 @@ export const Route = createFileRoute("/")({
   component: DashboardPage,
 });
 
+// Ordem dos botões no filtro de período do cabeçalho.
 const PERIODS: PeriodKey[] = ["today", "yesterday", "7d", "30d"];
 
+// Intervalo (em milissegundos) do auto-refresh — requisito do dashboard.
+const AUTO_REFRESH_MS = 60_000;
+
+/** Formata uma data ISO em pt-BR para exibir no cabeçalho. */
 function formatTime(iso: string) {
   const d = new Date(iso);
   return d.toLocaleString("pt-BR", {
@@ -57,35 +84,72 @@ function formatTime(iso: string) {
   });
 }
 
+/**
+ * Componente raiz da página. Concentra os 3 estados principais:
+ *   - `period`: qual filtro de período está selecionado
+ *   - `data`:   os dados vindos da API (ou null antes do 1º carregamento)
+ *   - `error`:  mensagem de erro caso a chamada à API falhe
+ */
 function DashboardPage() {
   const [period, setPeriod] = useState<PeriodKey>("today");
-  const [refreshTick, setRefreshTick] = useState(0);
+  const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const data = useMemo(() => generateData(period), [period, refreshTick]);
-
-  useEffect(() => {
+  /**
+   * Função que efetivamente busca os dados. Centralizamos numa variável
+   * para reutilizar no carregamento inicial, ao trocar de período e no
+   * auto-refresh de 60 segundos.
+   */
+  const load = async (signal?: AbortSignal) => {
     setLoading(true);
-    const t = setTimeout(() => setLoading(false), 450);
-    return () => clearTimeout(t);
-  }, [period, refreshTick]);
+    setError(null);
+    try {
+      const fresh = await fetchDashboard(period);
+      if (signal?.aborted) return; // evita atualizar estado de uma chamada cancelada
+      setData(fresh);
+    } catch (err) {
+      console.error("Falha ao carregar dashboard:", err);
+      setError(err instanceof Error ? err.message : "Erro desconhecido");
+    } finally {
+      if (!signal?.aborted) setLoading(false);
+    }
+  };
 
-  // Auto refresh every 60s
+  // Carrega/recarrega sempre que o usuário troca o filtro de período.
+  // O `AbortController` cancela requisições anteriores se o usuário
+  // clicar rápido em vários períodos seguidos.
   useEffect(() => {
-    const id = setInterval(() => setRefreshTick((n) => n + 1), 60000);
+    const controller = new AbortController();
+    load(controller.signal);
+    return () => controller.abort();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [period]);
+
+  // Atualização automática a cada 60 segundos (requisito do projeto).
+  useEffect(() => {
+    const id = setInterval(() => load(), AUTO_REFRESH_MS);
     return () => clearInterval(id);
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [period]);
 
   return (
     <div className="min-h-screen bg-background">
       <Header
-        updatedAt={data.updatedAt}
+        updatedAt={data?.updatedAt ?? new Date().toISOString()}
         period={period}
         onPeriodChange={setPeriod}
-        onRefresh={() => setRefreshTick((n) => n + 1)}
+        onRefresh={() => load()}
       />
 
       <main className="mx-auto max-w-[1500px] space-y-6 px-4 pb-12 pt-6 sm:px-6 lg:px-8">
+        {/* Estado de erro: mostra um alerta com botão para tentar de novo */}
+        {error && !loading && (
+          <ErrorBanner message={error} onRetry={() => load()} />
+        )}
+
+        {/* Mostramos a UI mesmo durante o loading inicial:
+            os próprios cards exibem seus skeletons quando `loading` é true. */}
         <KpiGrid data={data} loading={loading} />
 
         <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
@@ -104,7 +168,10 @@ function DashboardPage() {
   );
 }
 
-/* ---------- Header ---------- */
+/* ============================================================================
+ * Cabeçalho fixo no topo da página: logo + título, hora da última
+ * atualização, filtro de período e botão "Atualizar".
+ * ========================================================================== */
 
 function Header({
   updatedAt,
@@ -117,6 +184,7 @@ function Header({
   onPeriodChange: (p: PeriodKey) => void;
   onRefresh: () => void;
 }) {
+  // Estado local apenas para animar o ícone girando ao clicar em "Atualizar".
   const [spin, setSpin] = useState(false);
   const handleRefresh = () => {
     setSpin(true);
@@ -127,6 +195,7 @@ function Header({
   return (
     <header className="sticky top-0 z-30 border-b border-border bg-background/85 backdrop-blur-md">
       <div className="mx-auto grid max-w-[1500px] grid-cols-[minmax(0,1fr)_auto] items-center gap-4 px-4 py-4 sm:px-6 lg:flex lg:px-8">
+        {/* Bloco da esquerda: logo + título + última atualização */}
         <div className="flex min-w-0 items-center gap-3">
           <div
             className="grid h-10 w-10 shrink-0 place-items-center rounded-lg text-primary-foreground"
@@ -142,6 +211,7 @@ function Header({
           </div>
         </div>
 
+        {/* Bloco da direita: filtro de período + botão de atualizar */}
         <div className="col-span-2 flex flex-wrap items-center gap-2 lg:col-auto lg:ml-auto">
           <div className="inline-flex rounded-lg border border-border bg-card p-0.5 shadow-sm">
             {PERIODS.map((p) => (
@@ -172,10 +242,45 @@ function Header({
   );
 }
 
-/* ---------- KPI grid ---------- */
+/* ============================================================================
+ * Banner de erro exibido quando a chamada à API falha.
+ * ========================================================================== */
 
-function KpiGrid({ data, loading }: { data: ReturnType<typeof generateData>; loading: boolean }) {
-  const k = data.kpis;
+function ErrorBanner({ message, onRetry }: { message: string; onRetry: () => void }) {
+  return (
+    <div
+      role="alert"
+      className="flex items-start gap-3 rounded-xl border border-destructive/30 bg-destructive/5 p-4"
+    >
+      <AlertCircle className="mt-0.5 h-5 w-5 text-destructive" />
+      <div className="flex-1">
+        <p className="text-sm font-semibold text-destructive">Não foi possível carregar os dados</p>
+        <p className="mt-0.5 text-xs text-muted-foreground">{message}</p>
+      </div>
+      <button
+        onClick={onRetry}
+        className="rounded-md border border-destructive/40 px-3 py-1 text-xs font-medium text-destructive hover:bg-destructive/10"
+      >
+        Tentar novamente
+      </button>
+    </div>
+  );
+}
+
+/* ============================================================================
+ * Grade de KPIs (os 5 cards de números do topo). Cada card é um <KpiCard />.
+ * ========================================================================== */
+
+function KpiGrid({ data, loading }: { data: DashboardData | null; loading: boolean }) {
+  // Valores padrão para enquanto os dados não chegaram (1º render).
+  const empty = { value: 0, delta: 0 };
+  const k = data?.kpis ?? {
+    total: empty,
+    closed: empty,
+    transferred: empty,
+    dailyAvg: empty,
+    closedPerAgent: empty,
+  };
   const fmt = (n: number) => n.toLocaleString("pt-BR");
   return (
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
@@ -188,8 +293,12 @@ function KpiGrid({ data, loading }: { data: ReturnType<typeof generateData>; loa
   );
 }
 
-/* ---------- Charts ---------- */
+/* ============================================================================
+ * Estilos compartilhados e helpers dos gráficos.
+ * ========================================================================== */
 
+// Estilo aplicado ao "tooltip" (caixinha que aparece quando o mouse passa
+// sobre o gráfico). Usar variáveis CSS mantém a aparência integrada ao tema.
 const TOOLTIP_STYLE = {
   background: "var(--color-card)",
   border: "1px solid var(--color-border)",
@@ -199,23 +308,27 @@ const TOOLTIP_STYLE = {
   color: "var(--color-foreground)",
 } as const;
 
+/** Placeholder animado exibido enquanto os dados estão sendo carregados. */
 function SkeletonChart({ height = 260 }: { height?: number }) {
   return <div className="animate-pulse rounded-lg bg-muted" style={{ height }} />;
 }
 
-function HourlyChart({ data, loading }: { data: ReturnType<typeof generateData>; loading: boolean }) {
+/* ----------------------------- Gráfico de Linha --------------------------- */
+// Volume de atendimentos por hora do dia (00h–23h).
+function HourlyChart({ data, loading }: { data: DashboardData | null; loading: boolean }) {
   return (
     <ChartCard
       title="Atendimentos ao Longo do Dia"
       subtitle="Volume de chamados por hora"
       className="xl:col-span-2"
     >
-      {loading ? (
+      {loading || !data ? (
         <SkeletonChart />
       ) : (
         <ResponsiveContainer width="100%" height={280}>
           <LineChart data={data.hourly} margin={{ top: 5, right: 16, left: -8, bottom: 0 }}>
             <defs>
+              {/* Gradiente aplicado à linha do gráfico */}
               <linearGradient id="lineGrad" x1="0" y1="0" x2="1" y2="0">
                 <stop offset="0%" stopColor="oklch(0.55 0.2 260)" />
                 <stop offset="100%" stopColor="oklch(0.55 0.18 290)" />
@@ -241,12 +354,18 @@ function HourlyChart({ data, loading }: { data: ReturnType<typeof generateData>;
   );
 }
 
-function AgentsChart({ data, loading }: { data: ReturnType<typeof generateData>; loading: boolean }) {
+/* ----------------------- Gráfico de Barras (horizontal) ------------------- */
+// Produtividade dos atendentes — quantos chamados cada um fechou.
+function AgentsChart({ data, loading }: { data: DashboardData | null; loading: boolean }) {
+  // `useMemo` evita recalcular a média toda vez que o componente renderiza.
   const avg = useMemo(
-    () => Math.round(data.agents.reduce((s, a) => s + a.closed, 0) / Math.max(data.agents.length, 1)),
-    [data.agents],
+    () =>
+      data
+        ? Math.round(data.agents.reduce((s, a) => s + a.closed, 0) / Math.max(data.agents.length, 1))
+        : 0,
+    [data],
   );
-  const top = data.agents[0];
+  const top = data?.agents[0];
 
   return (
     <ChartCard
@@ -260,7 +379,7 @@ function AgentsChart({ data, loading }: { data: ReturnType<typeof generateData>;
         )
       }
     >
-      {loading ? (
+      {loading || !data ? (
         <SkeletonChart />
       ) : (
         <ResponsiveContainer width="100%" height={280}>
@@ -285,15 +404,18 @@ function AgentsChart({ data, loading }: { data: ReturnType<typeof generateData>;
   );
 }
 
-function TrendChart({ data, loading }: { data: ReturnType<typeof generateData>; loading: boolean }) {
+/* --------------------------- Gráfico de Área ------------------------------ */
+// Tendência: compara chamados abertos vs. fechados vs. pendentes por dia.
+function TrendChart({ data, loading }: { data: DashboardData | null; loading: boolean }) {
   return (
     <ChartCard title="Tendência de Chamados" subtitle="Abertos, fechados e pendentes ao longo dos dias">
-      {loading ? (
+      {loading || !data ? (
         <SkeletonChart height={300} />
       ) : (
         <ResponsiveContainer width="100%" height={300}>
           <AreaChart data={data.trend} margin={{ top: 10, right: 16, left: -8, bottom: 0 }}>
             <defs>
+              {/* Um gradiente vertical por série, para dar profundidade às áreas */}
               <linearGradient id="gAb" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="0%" stopColor="oklch(0.55 0.2 260)" stopOpacity={0.45} />
                 <stop offset="100%" stopColor="oklch(0.55 0.2 260)" stopOpacity={0} />
@@ -322,8 +444,11 @@ function TrendChart({ data, loading }: { data: ReturnType<typeof generateData>; 
   );
 }
 
-/* ---------- Ranking table ---------- */
+/* ============================================================================
+ * Tabela de Ranking de Atendentes — clique nos cabeçalhos para ordenar.
+ * ========================================================================== */
 
+// Chaves possíveis de ordenação (nome de coluna).
 type SortKey = "closed" | "avgTimeMin" | "resolutionRate" | "name";
 
 function RankingTable({
@@ -331,14 +456,17 @@ function RankingTable({
   loading,
   className,
 }: {
-  data: ReturnType<typeof generateData>;
+  data: DashboardData | null;
   loading: boolean;
   className?: string;
 }) {
+  // Estado de ordenação atual: qual coluna e em qual direção (asc/desc).
   const [sort, setSort] = useState<{ key: SortKey; dir: "asc" | "desc" }>({ key: "closed", dir: "desc" });
 
+  // Ordena uma cópia dos atendentes conforme o estado de ordenação.
+  // Sempre fazemos uma cópia (`[...]`) para não mutar o array original.
   const rows = useMemo(() => {
-    const r = [...data.agents];
+    const r = data ? [...data.agents] : [];
     r.sort((a, b) => {
       const av = a[sort.key] as number | string;
       const bv = b[sort.key] as number | string;
@@ -347,11 +475,13 @@ function RankingTable({
       return 0;
     });
     return r;
-  }, [data.agents, sort]);
+  }, [data, sort]);
 
+  // Alterna a coluna: se clicou na mesma, inverte direção; senão, começa em desc.
   const toggle = (key: SortKey) =>
     setSort((s) => (s.key === key ? { key, dir: s.dir === "asc" ? "desc" : "asc" } : { key, dir: "desc" }));
 
+  // Componente local <Th> apenas para encurtar a marcação dos cabeçalhos.
   const Th = ({ k, children, align = "left" }: { k: SortKey; children: React.ReactNode; align?: "left" | "right" }) => (
     <th
       onClick={() => toggle(k)}
@@ -369,7 +499,7 @@ function RankingTable({
 
   return (
     <ChartCard title="Ranking de Atendentes" subtitle="Clique nas colunas para ordenar" className={className}>
-      {loading ? (
+      {loading || !data ? (
         <SkeletonChart height={320} />
       ) : (
         <div className="overflow-x-auto">
@@ -387,6 +517,7 @@ function RankingTable({
                 <tr key={a.name} className="border-b border-border/60 last:border-0 hover:bg-accent/40">
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-3">
+                      {/* "Avatar" feito com as iniciais do nome */}
                       <div className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-primary/10 text-xs font-bold text-primary">
                         {a.name.split(" ").map((n) => n[0]).slice(0, 2).join("")}
                       </div>
@@ -401,6 +532,7 @@ function RankingTable({
                   </td>
                   <td className="px-4 py-3 text-right text-sm tabular-nums text-muted-foreground">{a.avgTimeMin} min</td>
                   <td className="px-4 py-3 text-right">
+                    {/* Cor do badge depende da faixa da taxa de resolução */}
                     <span
                       className={cn(
                         "inline-flex rounded-md px-2 py-0.5 text-xs font-semibold tabular-nums",
@@ -424,16 +556,27 @@ function RankingTable({
   );
 }
 
-/* ---------- Insights ---------- */
+/* ============================================================================
+ * Painel de Resumo Executivo — destaques calculados a partir dos dados.
+ * (Pico/vale de atendimentos, maior produtividade, menor tempo, taxa geral.)
+ * ========================================================================== */
 
-function InsightsPanel({ data, loading }: { data: ReturnType<typeof generateData>; loading: boolean }) {
+function InsightsPanel({ data, loading }: { data: DashboardData | null; loading: boolean }) {
   const insights = useMemo(() => {
     if (!data) return [];
+
+    // Ordena horários por volume para descobrir pico e vale.
     const sortedHours = [...data.hourly].sort((a, b) => b.count - a.count);
     const peak = sortedHours[0];
     const low = sortedHours[sortedHours.length - 1];
+
+    // `data.agents` já vem ordenado por "closed" → primeiro = mais produtivo.
     const topAgent = data.agents[0];
+
+    // Atendente com menor tempo médio = mais rápido.
     const fastest = [...data.agents].sort((a, b) => a.avgTimeMin - b.avgTimeMin)[0];
+
+    // Taxa média de resolução da equipe.
     const teamRate =
       data.agents.reduce((s, a) => s + a.resolutionRate, 0) / Math.max(data.agents.length, 1);
 
@@ -455,7 +598,7 @@ function InsightsPanel({ data, loading }: { data: ReturnType<typeof generateData
 
   return (
     <ChartCard title="Resumo Executivo" subtitle="Insights automáticos do período">
-      {loading ? (
+      {loading || !data ? (
         <SkeletonChart height={320} />
       ) : (
         <ul className="space-y-3">
