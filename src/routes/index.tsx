@@ -36,11 +36,13 @@ import {
 import {
   Activity,
   AlertCircle,
+  CalendarIcon,
   CheckCircle2,
   Clock,
   Inbox,
+  MessageSquare,
   RefreshCw,
-  Share2,
+  Timer,
   TrendingUp,
   Trophy,
   UserCheck,
@@ -48,9 +50,15 @@ import {
 } from "lucide-react"; // ícones SVG
 import { KpiCard } from "@/components/dashboard/KpiCard";
 import { ChartCard } from "@/components/dashboard/ChartCard";
-import { PERIOD_LABELS, type DashboardData, type PeriodKey } from "@/lib/dashboard-data";
+import { type DashboardData, type DateRange } from "@/lib/dashboard-data";
 import { fetchDashboard } from "@/lib/dashboard-api"; // 🔌 ponto de integração com a API
 import { cn } from "@/lib/utils";
+import { format } from "date-fns";
+import { ptBR } from "date-fns/locale";
+import type { DateRange as RdpRange } from "react-day-picker";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Button } from "@/components/ui/button";
 
 // Registro da rota "/" no TanStack Router + metatags SEO.
 export const Route = createFileRoute("/")({
@@ -65,11 +73,24 @@ export const Route = createFileRoute("/")({
   component: DashboardPage,
 });
 
-// Ordem dos botões no filtro de período do cabeçalho.
-const PERIODS: PeriodKey[] = ["today", "yesterday", "7d", "30d"];
-
 // Intervalo (em milissegundos) do auto-refresh — requisito do dashboard.
 const AUTO_REFRESH_MS = 60_000;
+
+/** Converte um `Date` para string ISO no formato YYYY-MM-DD (sem fuso). */
+function toISODate(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+/** Cria o intervalo padrão inicial: últimos 7 dias (inclui hoje). */
+function defaultRange(): DateRange {
+  const to = new Date();
+  const from = new Date();
+  from.setDate(from.getDate() - 6);
+  return { from: toISODate(from), to: toISODate(to) };
+}
 
 /** Formata uma data ISO em pt-BR para exibir no cabeçalho. */
 function formatTime(iso: string) {
@@ -91,7 +112,9 @@ function formatTime(iso: string) {
  *   - `error`:  mensagem de erro caso a chamada à API falhe
  */
 function DashboardPage() {
-  const [period, setPeriod] = useState<PeriodKey>("today");
+  // 🆕 Substituímos o filtro de "período pré-definido" por um INTERVALO
+  //    de datas escolhido em um calendário no cabeçalho.
+  const [range, setRange] = useState<DateRange>(defaultRange);
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -105,7 +128,7 @@ function DashboardPage() {
     setLoading(true);
     setError(null);
     try {
-      const fresh = await fetchDashboard(period);
+      const fresh = await fetchDashboard(range);
       if (signal?.aborted) return; // evita atualizar estado de uma chamada cancelada
       setData(fresh);
     } catch (err) {
@@ -124,21 +147,21 @@ function DashboardPage() {
     load(controller.signal);
     return () => controller.abort();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [period]);
+  }, [range.from, range.to]);
 
   // Atualização automática a cada 60 segundos (requisito do projeto).
   useEffect(() => {
     const id = setInterval(() => load(), AUTO_REFRESH_MS);
     return () => clearInterval(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [period]);
+  }, [range.from, range.to]);
 
   return (
     <div className="min-h-screen bg-background">
       <Header
         updatedAt={data?.updatedAt ?? new Date().toISOString()}
-        period={period}
-        onPeriodChange={setPeriod}
+        range={range}
+        onRangeChange={setRange}
         onRefresh={() => load()}
       />
 
