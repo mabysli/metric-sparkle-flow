@@ -436,7 +436,9 @@ function AgentsChart({ data, loading }: { data: DashboardData | null; loading: b
       {loading || !data ? (
         <SkeletonChart />
       ) : (
-        <ResponsiveContainer width="100%" height={280}>
+        // 🆕 Altura calculada em função da quantidade de atendentes
+        //    para exibir TODOS sem sobreposição/cortes de rótulos.
+        <ResponsiveContainer width="100%" height={Math.max(280, data.agents.length * 32)}>
           <BarChart data={data.agents} layout="vertical" margin={{ top: 0, right: 16, left: 8, bottom: 0 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" horizontal={false} />
             <XAxis type="number" stroke="var(--color-muted-foreground)" fontSize={11} tickLine={false} axisLine={false} />
