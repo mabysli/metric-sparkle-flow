@@ -198,13 +198,13 @@ function DashboardPage() {
 
 function Header({
   updatedAt,
-  period,
-  onPeriodChange,
+  range,
+  onRangeChange,
   onRefresh,
 }: {
   updatedAt: string;
-  period: PeriodKey;
-  onPeriodChange: (p: PeriodKey) => void;
+  range: DateRange;
+  onRangeChange: (r: DateRange) => void;
   onRefresh: () => void;
 }) {
   // Estado local apenas para animar o ícone girando ao clicar em "Atualizar".
@@ -214,6 +214,30 @@ function Header({
     onRefresh();
     setTimeout(() => setSpin(false), 600);
   };
+
+  // 🆕 Estado do popover do calendário e do intervalo selecionado.
+  //    Usamos o tipo `RdpRange` (react-day-picker) enquanto o usuário
+  //    ainda está escolhendo — só notificamos o pai (`onRangeChange`)
+  //    quando `from` E `to` estão preenchidos.
+  const rdpValue: RdpRange = {
+    from: new Date(range.from + "T00:00:00"),
+    to: new Date(range.to + "T00:00:00"),
+  };
+
+  const handleSelectRange = (r: RdpRange | undefined) => {
+    if (r?.from && r?.to) {
+      onRangeChange({ from: toISODate(r.from), to: toISODate(r.to) });
+    }
+  };
+
+  const rangeLabel =
+    range.from === range.to
+      ? format(new Date(range.from + "T00:00:00"), "dd 'de' MMM, yyyy", { locale: ptBR })
+      : `${format(new Date(range.from + "T00:00:00"), "dd MMM", { locale: ptBR })} — ${format(
+          new Date(range.to + "T00:00:00"),
+          "dd MMM, yyyy",
+          { locale: ptBR },
+        )}`;
 
   return (
     <header className="sticky top-0 z-30 border-b border-border bg-background/85 backdrop-blur-md">
@@ -234,24 +258,32 @@ function Header({
           </div>
         </div>
 
-        {/* Bloco da direita: filtro de período + botão de atualizar */}
+        {/* Bloco da direita: 🆕 seletor de intervalo (calendário) + botão de atualizar */}
         <div className="col-span-2 flex flex-wrap items-center gap-2 lg:col-auto lg:ml-auto">
-          <div className="inline-flex rounded-lg border border-border bg-card p-0.5 shadow-sm">
-            {PERIODS.map((p) => (
-              <button
-                key={p}
-                onClick={() => onPeriodChange(p)}
-                className={cn(
-                  "rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
-                  period === p
-                    ? "bg-primary text-primary-foreground shadow-sm"
-                    : "text-muted-foreground hover:text-foreground",
-                )}
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 gap-2 rounded-lg border-border bg-card text-xs font-medium text-foreground shadow-sm hover:bg-accent"
               >
-                {PERIOD_LABELS[p]}
-              </button>
-            ))}
-          </div>
+                <CalendarIcon className="h-3.5 w-3.5" />
+                {rangeLabel}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent align="end" className="w-auto p-0">
+              {/* Calendário em modo "range": usuário clica no início e depois no fim. */}
+              <Calendar
+                mode="range"
+                selected={rdpValue}
+                onSelect={handleSelectRange}
+                numberOfMonths={2}
+                defaultMonth={rdpValue.from}
+                locale={ptBR}
+                className={cn("p-3 pointer-events-auto")}
+              />
+            </PopoverContent>
+          </Popover>
           <button
             onClick={handleRefresh}
             className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-medium text-foreground shadow-sm transition-colors hover:bg-accent"
@@ -300,16 +332,15 @@ function KpiGrid({ data, loading }: { data: DashboardData | null; loading: boole
   const k = data?.kpis ?? {
     total: empty,
     closed: empty,
-    transferred: empty,
     dailyAvg: empty,
     closedPerAgent: empty,
   };
   const fmt = (n: number) => n.toLocaleString("pt-BR");
   return (
-    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+    // ❌ KPI "Chamados Transferidos" removido conforme solicitado.
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
       <KpiCard label="Total de Chamados" value={fmt(k.total.value)} delta={k.total.delta} icon={Inbox} tone="primary" loading={loading} />
       <KpiCard label="Chamados Fechados" value={fmt(k.closed.value)} delta={k.closed.delta} icon={CheckCircle2} tone="success" loading={loading} />
-      <KpiCard label="Chamados Transferidos" value={fmt(k.transferred.value)} delta={k.transferred.delta} icon={Share2} tone="warning" loading={loading} />
       <KpiCard label="Média de Atendimentos / Dia" value={fmt(k.dailyAvg.value)} delta={k.dailyAvg.delta} icon={TrendingUp} tone="info" loading={loading} />
       <KpiCard label="Fechados por Atendente" value={fmt(k.closedPerAgent.value)} delta={k.closedPerAgent.delta} icon={UserCheck} tone="primary" loading={loading} />
     </div>
@@ -472,7 +503,8 @@ function TrendChart({ data, loading }: { data: DashboardData | null; loading: bo
  * ========================================================================== */
 
 // Chaves possíveis de ordenação (nome de coluna).
-type SortKey = "closed" | "avgTimeMin" | "resolutionRate" | "name";
+// 🆕 Substituímos `resolutionRate` pelas novas métricas de tempo.
+type SortKey = "closed" | "avgTimeMin" | "avgResponseMin" | "firstContactMin" | "avgCloseMin" | "name";
 
 function RankingTable({
   data,
@@ -532,7 +564,10 @@ function RankingTable({
                 <Th k="name">Atendente</Th>
                 <Th k="closed" align="right">Fechados</Th>
                 <Th k="avgTimeMin" align="right">Tempo Médio</Th>
-                <Th k="resolutionRate" align="right">Taxa Resolução</Th>
+                {/* 🆕 Novas colunas de tempo (substituem a "Taxa Resolução") */}
+                <Th k="avgResponseMin" align="right">T. Resposta</Th>
+                <Th k="firstContactMin" align="right">1º Contato</Th>
+                <Th k="avgCloseMin" align="right">T. Fechamento</Th>
               </tr>
             </thead>
             <tbody>
@@ -554,20 +589,15 @@ function RankingTable({
                     {a.closed.toLocaleString("pt-BR")}
                   </td>
                   <td className="px-4 py-3 text-right text-sm tabular-nums text-muted-foreground">{a.avgTimeMin} min</td>
-                  <td className="px-4 py-3 text-right">
-                    {/* Cor do badge depende da faixa da taxa de resolução */}
-                    <span
-                      className={cn(
-                        "inline-flex rounded-md px-2 py-0.5 text-xs font-semibold tabular-nums",
-                        a.resolutionRate >= 90
-                          ? "bg-[color:var(--success)]/10 text-[color:var(--success)]"
-                          : a.resolutionRate >= 80
-                            ? "bg-[color:var(--info)]/10 text-[color:var(--info)]"
-                            : "bg-[color:var(--warning)]/15 text-[color:var(--warning)]",
-                      )}
-                    >
-                      {a.resolutionRate.toFixed(1)}%
-                    </span>
+                  {/* 🆕 Novas células de tempo (em minutos) */}
+                  <td className="px-4 py-3 text-right text-sm tabular-nums text-muted-foreground">
+                    {a.avgResponseMin.toFixed(1)} min
+                  </td>
+                  <td className="px-4 py-3 text-right text-sm tabular-nums text-muted-foreground">
+                    {a.firstContactMin.toFixed(1)} min
+                  </td>
+                  <td className="px-4 py-3 text-right text-sm tabular-nums text-muted-foreground">
+                    {a.avgCloseMin} min
                   </td>
                 </tr>
               ))}
@@ -599,16 +629,23 @@ function InsightsPanel({ data, loading }: { data: DashboardData | null; loading:
     // Atendente com menor tempo médio = mais rápido.
     const fastest = [...data.agents].sort((a, b) => a.avgTimeMin - b.avgTimeMin)[0];
 
-    // Taxa média de resolução da equipe.
-    const teamRate =
-      data.agents.reduce((s, a) => s + a.resolutionRate, 0) / Math.max(data.agents.length, 1);
+    // 🆕 Substituímos a "taxa de resolução" pelos novos tempos médios da equipe.
+    const avgResponse =
+      data.agents.reduce((s, a) => s + a.avgResponseMin, 0) / Math.max(data.agents.length, 1);
+    const avgFirstContact =
+      data.agents.reduce((s, a) => s + a.firstContactMin, 0) / Math.max(data.agents.length, 1);
+    const avgClose =
+      data.agents.reduce((s, a) => s + a.avgCloseMin, 0) / Math.max(data.agents.length, 1);
 
     return [
       { icon: Zap, tone: "primary" as const, label: "Pico de atendimentos", value: `${peak.hour} · ${peak.count} chamados` },
       { icon: Clock, tone: "info" as const, label: "Menor movimento", value: `${low.hour} · ${low.count} chamados` },
       { icon: Trophy, tone: "success" as const, label: "Maior produtividade", value: `${topAgent.name} · ${topAgent.closed}` },
       { icon: Activity, tone: "warning" as const, label: "Menor tempo médio", value: `${fastest.name} · ${fastest.avgTimeMin} min` },
-      { icon: CheckCircle2, tone: "success" as const, label: "Taxa de resolução geral", value: `${teamRate.toFixed(1)}%` },
+      // 🆕 Insights de tempo da equipe
+      { icon: MessageSquare, tone: "info" as const, label: "T. médio de resposta", value: `${avgResponse.toFixed(1)} min` },
+      { icon: Timer, tone: "primary" as const, label: "T. 1º contato (pós-bot)", value: `${avgFirstContact.toFixed(1)} min` },
+      { icon: CheckCircle2, tone: "success" as const, label: "T. médio de fechamento", value: `${avgClose.toFixed(0)} min` },
     ];
   }, [data]);
 
