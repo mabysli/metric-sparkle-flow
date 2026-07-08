@@ -30,7 +30,7 @@
  * ============================================================================
  */
 
-import { generateData, type DashboardData, type PeriodKey } from "./dashboard-data";
+import { generateData, type DashboardData, type DateRange, type PeriodKey } from "./dashboard-data";
 
 /**
  * Alterne para `false` quando o backend estiver disponível.
@@ -50,8 +50,12 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "";
  * trocar versões da API ou renomear endpoints sem caçar string pelo código.
  */
 const ENDPOINTS = {
-  // Ex.: GET /metrics/dashboard?period=today
+  // Ex.: GET /metrics/dashboard?period=today  (modo legado por período)
   dashboard: (period: PeriodKey) => `/metrics/dashboard?period=${period}`,
+  // 🆕 Novo endpoint por intervalo de datas — usado pelo filtro de calendário.
+  //    Ex.: GET /metrics/dashboard/range?from=2026-07-01&to=2026-07-08
+  dashboardRange: (range: DateRange) =>
+    `/metrics/dashboard/range?from=${range.from}&to=${range.to}`,
 } as const;
 
 /**
@@ -82,35 +86,51 @@ async function apiGet<T>(path: string): Promise<T> {
 }
 
 /**
- * Função PÚBLICA usada pela UI (src/routes/index.tsx).
- * Retorna sempre um objeto `DashboardData` — independente da origem.
+ * 🆕 Função PÚBLICA usada pela UI (src/routes/index.tsx).
+ * Recebe um INTERVALO DE DATAS (from/to) escolhido no calendário do cabeçalho
+ * e devolve os dados do dashboard.
  *
- * @param period período selecionado no filtro do cabeçalho
+ * ⚠️ Ao integrar com a API real, garanta que o backend aceite `from` e `to`
+ *    no mesmo formato ISO (YYYY-MM-DD) e devolva o shape `DashboardData`.
+ *    O ranking de atendentes agora precisa incluir as novas métricas de tempo:
+ *      - avgResponseMin   → tempo médio de resposta
+ *      - firstContactMin  → tempo até o 1º contato humano após o bot
+ *      - avgCloseMin      → tempo médio de fechamento do chamado
+ *    E NÃO deve mais retornar `resolutionRate` nem o KPI `transferred`.
  */
-export async function fetchDashboard(period: PeriodKey): Promise<DashboardData> {
+export async function fetchDashboard(range: DateRange): Promise<DashboardData> {
   // -----------------------------------------------------------------------
   // 🧪 MODO MOCK — gera dados simulados localmente
   // -----------------------------------------------------------------------
   if (USE_MOCK) {
     // Simulamos um pequeno atraso de rede para a UI exercitar o skeleton.
     await new Promise((resolve) => setTimeout(resolve, 400));
+    // Converte o intervalo em um "período" só para variar a semente do mock.
+    const days = Math.max(
+      1,
+      Math.round(
+        (new Date(range.to).getTime() - new Date(range.from).getTime()) / 86_400_000,
+      ) + 1,
+    );
+    const period: PeriodKey = days <= 1 ? "today" : days <= 7 ? "7d" : "30d";
     return generateData(period);
   }
 
   // -----------------------------------------------------------------------
-  // 🌐 MODO PRODUÇÃO — chama a API real
+  // 🌐 MODO PRODUÇÃO — chama a API real com o intervalo de datas
   // -----------------------------------------------------------------------
-  // Exemplo simples (um único endpoint que devolve tudo):
-  return await apiGet<DashboardData>(ENDPOINTS.dashboard(period));
+  return await apiGet<DashboardData>(ENDPOINTS.dashboardRange(range));
 
   // -----------------------------------------------------------------------
   // 💡 ALTERNATIVA — quando os dados vêm de VÁRIOS endpoints separados:
   //
+  // const qs = `?from=${range.from}&to=${range.to}`;
   // const [kpis, hourly, agents, trend] = await Promise.all([
-  //   apiGet<DashboardData["kpis"]>(`/metrics/kpis?period=${period}`),
-  //   apiGet<DashboardData["hourly"]>(`/metrics/hourly?period=${period}`),
-  //   apiGet<DashboardData["agents"]>(`/agents/ranking?period=${period}`),
-  //   apiGet<DashboardData["trend"]>(`/metrics/trend?period=${period}`),
+  //   apiGet<DashboardData["kpis"]>(`/metrics/kpis${qs}`),
+  //   apiGet<DashboardData["hourly"]>(`/metrics/hourly${qs}`),
+  //   // 👉 este endpoint deve devolver as novas métricas de tempo por atendente:
+  //   apiGet<DashboardData["agents"]>(`/agents/ranking${qs}`),
+  //   apiGet<DashboardData["trend"]>(`/metrics/trend${qs}`),
   // ]);
   // return { updatedAt: new Date().toISOString(), kpis, hourly, agents, trend };
   // -----------------------------------------------------------------------
