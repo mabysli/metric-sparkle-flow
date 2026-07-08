@@ -18,14 +18,31 @@
  */
 
 // Períodos disponíveis no filtro do cabeçalho do dashboard.
+// ⚠️ Mantido apenas por compatibilidade — o filtro visual agora é um
+// intervalo de datas (ver `DateRange` abaixo e `src/routes/index.tsx`).
 export type PeriodKey = "today" | "yesterday" | "7d" | "30d";
+
+/**
+ * 🆕 Intervalo de datas selecionado pelo usuário no calendário do cabeçalho.
+ * `from` e `to` são strings ISO (YYYY-MM-DD). O backend deve interpretar
+ * como intervalo inclusivo.
+ */
+export interface DateRange {
+  from: string; // data inicial (YYYY-MM-DD)
+  to: string;   // data final   (YYYY-MM-DD)
+}
 
 /** Métricas individuais de um atendente (linha do ranking). */
 export interface Agent {
-  name: string;           // nome do atendente
-  closed: number;         // total de chamados fechados no período
-  avgTimeMin: number;     // tempo médio de atendimento em minutos
-  resolutionRate: number; // taxa de resolução em % (0–100)
+  name: string;              // nome do atendente
+  closed: number;            // total de chamados fechados no período
+  avgTimeMin: number;        // tempo médio de atendimento em minutos
+  // 🆕 Novas métricas de tempo pedidas na revisão do dashboard.
+  // Todas em MINUTOS para ficar consistente com `avgTimeMin`.
+  avgResponseMin: number;    // tempo médio de resposta do chamado
+  firstContactMin: number;   // tempo até o 1º contato humano após o bot
+  avgCloseMin: number;       // tempo médio até o fechamento do chamado
+  // ❌ Removido: `resolutionRate` — o ranking não exibe mais taxa de resolução.
 }
 
 /** Um ponto da curva "atendimentos por hora do dia". */
@@ -49,7 +66,7 @@ export interface DashboardData {
     // Cada KPI tem o valor atual + variação (%) em relação ao período anterior.
     total: { value: number; delta: number };
     closed: { value: number; delta: number };
-    transferred: { value: number; delta: number };
+    // ❌ Removido: `transferred` — o KPI de "Chamados Transferidos" foi retirado.
     dailyAvg: { value: number; delta: number };
     closedPerAgent: { value: number; delta: number };
   };
@@ -59,6 +76,7 @@ export interface DashboardData {
 }
 
 // Lista fixa de nomes só para o mock parecer realista.
+// 🆕 Ampliada para 12 atendentes — o gráfico de produtividade agora exibe TODOS.
 const AGENT_NAMES = [
   "Ana Silva",
   "Bruno Costa",
@@ -68,6 +86,10 @@ const AGENT_NAMES = [
   "Felipe Souza",
   "Gabriela Rocha",
   "Henrique Alves",
+  "Isabela Prado",
+  "João Martins",
+  "Karina Duarte",
+  "Lucas Ferreira",
 ];
 
 /**
@@ -120,17 +142,19 @@ export function generateData(period: PeriodKey): DashboardData {
   // KPIs derivados do volume horário.
   const total = hourly.reduce((s, p) => s + p.count, 0);
   const closed = Math.round(total * (0.78 + rand() * 0.1));        // ~78–88% fechados
-  const transferred = Math.round(total * (0.08 + rand() * 0.05));  // ~8–13% transferidos
   const dailyAvg = Math.round(total / days);                       // média por dia
 
   // Gera métricas individuais para cada atendente e já ordena por fechamentos.
+  // 🆕 Também gera as novas métricas de tempo (resposta, 1º contato, fechamento).
   const agents: Agent[] = AGENT_NAMES.map((name) => {
     const c = Math.round((closed / AGENT_NAMES.length) * (0.5 + rand() * 1.1));
     return {
       name,
       closed: c,
       avgTimeMin: Math.round(8 + rand() * 22),
-      resolutionRate: Math.round((75 + rand() * 22) * 10) / 10,
+      avgResponseMin: Math.round((1 + rand() * 5) * 10) / 10,   // 1–6 min
+      firstContactMin: Math.round((0.5 + rand() * 3) * 10) / 10, // 0,5–3,5 min
+      avgCloseMin: Math.round(20 + rand() * 90),                 // 20–110 min
     };
   }).sort((a, b) => b.closed - a.closed);
 
@@ -151,7 +175,6 @@ export function generateData(period: PeriodKey): DashboardData {
     kpis: {
       total: { value: total, delta: Math.round((rand() * 30 - 10) * 10) / 10 },
       closed: { value: closed, delta: Math.round((rand() * 25 - 5) * 10) / 10 },
-      transferred: { value: transferred, delta: Math.round((rand() * 20 - 10) * 10) / 10 },
       dailyAvg: { value: dailyAvg, delta: Math.round((rand() * 20 - 8) * 10) / 10 },
       closedPerAgent: { value: closedPerAgent, delta: Math.round((rand() * 20 - 8) * 10) / 10 },
     },
