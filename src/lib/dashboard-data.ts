@@ -14,6 +14,20 @@
  *
  * IMPORTANTE: a UI NUNCA importa este arquivo diretamente — ela conversa
  * apenas com `src/lib/dashboard-api.ts`, que decide entre mock ou API real.
+ *
+ * ----------------------------------------------------------------------
+ * 🔧 AÇÕES REALIZADAS NESTA REVISÃO (resolução de merge + integração API)
+ * ----------------------------------------------------------------------
+ *   1) Havia dois conflitos de merge não resolvidos (`<<<<<<< HEAD` /
+ *      `=======` / `>>>>>>>`) neste arquivo: no `export type PeriodKey`
+ *      e na lista `AGENT_NAMES`. Ambos foram resolvidos abaixo.
+ *   2) `PeriodKey` foi mantido apenas como tipo de compatibilidade (o
+ *      filtro visual do cabeçalho agora usa `DateRange`, de/até).
+ *   3) `AGENT_NAMES` ficou com a lista de nomes fictícios (branch mais
+ *      recente) — os nomes REAIS dos atendentes (com `userId`) agora
+ *      vivem em `digisac-catalog.ts`, usados só pela integração real em
+ *      `dashboard-api.ts`. Isso evita misturar dados de mock com dados
+ *      reais de pessoas.
  * ============================================================================
  */
 
@@ -76,7 +90,8 @@ export interface DashboardData {
 }
 
 // Lista fixa de nomes só para o mock parecer realista.
-// 🆕 Ampliada para 12 atendentes — o gráfico de produtividade agora exibe TODOS.
+// 🆕 Ampliada — o gráfico de produtividade agora exibe TODOS os atendentes.
+// (Nomes fictícios — os nomes/IDs reais ficam em `digisac-catalog.ts`.)
 const AGENT_NAMES = [
   "Ana Silva",
   "Bruno Costa",
