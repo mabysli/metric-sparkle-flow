@@ -41,7 +41,7 @@ export const DEFAULT_DEPARTMENT_ID = DEPARTMENTS.filaSuporte.id;
  */
 export const AGENTS: DigisacAgent[] = [
   { id: "296e0d4c-a546-4746-b6da-5afd9a62f2d4", name: "Manu Oliveira" },
-  { id: "2fd4d5da-6106-474e-a4ea-b97a66ad2b3c", name: "Laura Lopes" },
+  { id: "2fd4d5da-6106-474e-a4ea-b97a66ad2b3c", name: "Laura Lopes - arq" },
   { id: "ea9ff42a-0ac8-4c1b-8685-08d12296a339", name: "Leidiane Magalhães" },
   { id: "e5920e00-5fb8-4b5d-8cce-1c17b12c52f9", name: "Ana Lins" },
   { id: "0778ff09-926d-4c23-9ba4-7540c5a85e51", name: "Bruno Lima" },
