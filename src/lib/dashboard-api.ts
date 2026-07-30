@@ -59,35 +59,20 @@
  *   ⚠️ ".env" no .gitignore. Nunca deixe o token literal no código.
  *
  * ----------------------------------------------------------------------
- * 🔧 AÇÕES REALIZADAS NESTA REVISÃO (resolução de merge + integração API)
+ * 🔧 Notas desta revisão
  * ----------------------------------------------------------------------
- *   1) Havia 5 blocos de conflito de merge não resolvidos neste arquivo
- *      (imports, `DashboardFilters`/`DigisacTotals`/rotas, e duas versões
- *      de `fetchDashboard`). Todos foram resolvidos abaixo.
- *   2) A branch "HEAD" já tinha a integração certa com o endpoint real
- *      `/dashboard/general` (bate 100% com a requisição de exemplo que
- *      você mandou: mesmos query params e mesmo formato de resposta) —
- *      essa foi a base escolhida para as chamadas HTTP.
- *   3) A outra branch trocou o filtro de "período fixo" (`PeriodKey`) por
- *      um calendário de intervalo (`DateRange`, de/até) — isso foi
- *      mantido, já que é o que a tela mais nova usa. `fetchDashboard`
- *      agora recebe `DateRange` só que por baixo dos panos ele converte
- *      pra `startPeriod`/`endPeriod` (ISO) e chama a API real do jeito
- *      que já estava confirmado.
- *   4) A outra branch também apontava pra endpoints fictícios
- *      (`/metrics/dashboard`, `/metrics/dashboard/range`) que não existem
- *      de verdade — foram removidos em favor do `/dashboard/general` real.
- *   5) Criado o arquivo `digisac-catalog.ts` (era importado mas não
- *      existia) com o departamento e os 14 atendentes reais que você
- *      passou (nome + userId).
- *   6) `buildKpis` não gera mais o campo `transferred` (removido também
- *      de `DashboardData` em `dashboard-data.ts`).
- *   7) `fetchAgentsRanking` agora preenche as novas métricas de tempo do
- *      `Agent` (`avgResponseMin`, `firstContactMin`, `avgCloseMin`) a
- *      partir dos campos reais da API (`waitingTimeAvg`,
- *      `waitingTimeAfterBot`, `ticketTime`) — ver comentários no corpo da
- *      função sobre como cada um foi calculado, e onde ainda é uma
- *      aproximação por falta de campo específico na API.
+ *   - O filtro de "período fixo" (`PeriodKey`) foi trocado por um
+ *     calendário de intervalo (`DateRange`, de/até). `fetchDashboard` agora
+ *     recebe `DateRange` e converte internamente para `startPeriod`/
+ *     `endPeriod` (ISO) antes de chamar a API real.
+ *   - `buildKpis` não gera mais o campo `transferred` (removido também de
+ *     `DashboardData` em `dashboard-data.ts`).
+ *   - `fetchAgentsRanking` preenche as novas métricas de tempo do `Agent`
+ *     (`avgResponseMin`, `firstContactMin`, `avgCloseMin`) a partir dos
+ *     campos reais da API (`waitingTimeAvg`, `waitingTimeAfterBot`,
+ *     `ticketTime`) — ver comentários no corpo da função sobre como cada
+ *     um foi calculado, e onde ainda é uma aproximação por falta de campo
+ *     específico na API.
  * ============================================================================
  */
 
@@ -280,214 +265,7 @@ function pctDelta(curr: number, prev: number): number {
 
 /** ❌ Não gera mais `transferred` — a API não devolve esse dado (ver cabeçalho do arquivo). */
 function buildKpis(current: DigisacTotals, previous: DigisacTotals | null, agentsCount: number, days: number) {
-  const total = current.totalTicketsCou/**
- * dashboard-data.ts
- * ============================================================================
- * Camada de DADOS SIMULADOS (mock) do dashboard.
- *
- * Aqui ficam:
- *   1. As INTERFACES TypeScript que descrevem o formato esperado dos dados
- *      vindos do backend (KPIs, ranking de atendentes, séries temporais).
- *      → Quando a API real existir, ela DEVE devolver o mesmo formato.
- *
- *   2. A função `generateData(period)` que cria números aleatórios mas
- *      previsíveis (usando uma semente) para que a interface tenha o que
- *      mostrar enquanto a integração real não está pronta.
- *
- * IMPORTANTE: a UI NUNCA importa este arquivo diretamente — ela conversa
- * apenas com `src/lib/dashboard-api.ts`, que decide entre mock ou API real.
- *
- * ----------------------------------------------------------------------
- * 🔧 AÇÕES REALIZADAS NESTA REVISÃO (resolução de merge + integração API)
- * ----------------------------------------------------------------------
- *   1) Havia dois conflitos de merge não resolvidos (`<<<<<<< HEAD` /
- *      `=======` / `>>>>>>>`) neste arquivo: no `export type PeriodKey`
- *      e na lista `AGENT_NAMES`. Ambos foram resolvidos abaixo.
- *   2) `PeriodKey` foi mantido apenas como tipo de compatibilidade (o
- *      filtro visual do cabeçalho agora usa `DateRange`, de/até).
- *   3) `AGENT_NAMES` ficou com a lista de nomes fictícios (branch mais
- *      recente) — os nomes REAIS dos atendentes (com `userId`) agora
- *      vivem em `digisac-catalog.ts`, usados só pela integração real em
- *      `dashboard-api.ts`. Isso evita misturar dados de mock com dados
- *      reais de pessoas.
- * ============================================================================
- */
-
-// Períodos disponíveis no filtro do cabeçalho do dashboard.
-// ⚠️ Mantido apenas por compatibilidade — o filtro visual agora é um
-// intervalo de datas (ver `DateRange` abaixo e `src/routes/index.tsx`).
-export type PeriodKey = "today" | "yesterday" | "7d" | "30d";
-
-/**
- * 🆕 Intervalo de datas selecionado pelo usuário no calendário do cabeçalho.
- * `from` e `to` são strings ISO (YYYY-MM-DD). O backend deve interpretar
- * como intervalo inclusivo.
- */
-export interface DateRange {
-  from: string; // data inicial (YYYY-MM-DD)
-  to: string;   // data final   (YYYY-MM-DD)
-}
-
-/** Métricas individuais de um atendente (linha do ranking). */
-export interface Agent {
-  name: string;              // nome do atendente
-  closed: number;            // total de chamados fechados no período
-  avgTimeMin: number;        // tempo médio de atendimento em minutos
-  // 🆕 Novas métricas de tempo pedidas na revisão do dashboard.
-  // Todas em MINUTOS para ficar consistente com `avgTimeMin`.
-  avgResponseMin: number;    // tempo médio de resposta do chamado
-  firstContactMin: number;   // tempo até o 1º contato humano após o bot
-  avgCloseMin: number;       // tempo médio até o fechamento do chamado
-  // ❌ Removido: `resolutionRate` — o ranking não exibe mais taxa de resolução.
-}
-
-/** Um ponto da curva "atendimentos por hora do dia". */
-export interface HourlyPoint {
-  hour: string;  // rótulo no formato "00h" .. "23h"
-  count: number; // quantidade de chamados naquela hora
-}
-
-/** Um ponto da curva de tendência diária. */
-export interface TrendPoint {
-  day: string;        // rótulo do dia (ex.: "D-6", "D-5"...)
-  abertos: number;    // chamados abertos no dia
-  fechados: number;   // chamados fechados no dia
-  pendentes: number;  // chamados ainda pendentes
-}
-
-/** Estrutura completa retornada pela API/mock para a tela do dashboard. */
-export interface DashboardData {
-  updatedAt: string; // ISO timestamp — usado no cabeçalho "Última atualização"
-  kpis: {
-    // Cada KPI tem o valor atual + variação (%) em relação ao período anterior.
-    total: { value: number; delta: number };
-    closed: { value: number; delta: number };
-    // ❌ Removido: `transferred` — o KPI de "Chamados Transferidos" foi retirado.
-    dailyAvg: { value: number; delta: number };
-    closedPerAgent: { value: number; delta: number };
-  };
-  hourly: HourlyPoint[]; // série para o gráfico "Atendimentos ao longo do dia"
-  agents: Agent[];       // lista usada no gráfico de produtividade e na tabela
-  trend: TrendPoint[];   // série para o gráfico de tendência
-}
-
-// Lista fixa de nomes só para o mock parecer realista.
-// 🆕 Ampliada — o gráfico de produtividade agora exibe TODOS os atendentes.
-// (Nomes fictícios — os nomes/IDs reais ficam em `digisac-catalog.ts`.)
-const AGENT_NAMES = [
-  "Ana Silva",
-  "Bruno Costa",
-  "Carla Mendes",
-  "Diego Ramos",
-  "Eduarda Lima",
-  "Felipe Souza",
-  "Gabriela Rocha",
-  "Henrique Alves",
-  "Isabela Prado",
-  "João Martins",
-  "Karina Duarte",
-  "Lucas Ferreira",
-];
-
-/**
- * Gerador de números pseudo-aleatórios "com semente".
- * Usar uma semente garante que o MESMO período sempre produza os MESMOS
- * números — útil para a interface não ficar "pulando" a cada renderização.
- */
-function seeded(seed: number) {
-  let s = seed;
-  return () => {
-    s = (s * 9301 + 49297) % 233280;
-    return s / 233280;
-  };
-}
-
-// Sementes distintas por período para que cada filtro mostre cenários diferentes.
-const PERIOD_SEEDS: Record<PeriodKey, number> = {
-  today: 42,
-  yesterday: 73,
-  "7d": 128,
-  "30d": 256,
-};
-
-// Quantidade de dias coberta por cada período — multiplica o volume gerado.
-const PERIOD_DAYS: Record<PeriodKey, number> = {
-  today: 1,
-  yesterday: 1,
-  "7d": 7,
-  "30d": 30,
-};
-
-/**
- * Cria um conjunto completo de dados simulados para o dashboard.
- * Não é chamada diretamente pela UI — é usada por `fetchDashboard()`
- * em `dashboard-api.ts` quando o modo mock está ativo.
- */
-export function generateData(period: PeriodKey): DashboardData {
-  const rand = seeded(PERIOD_SEEDS[period]);
-  const days = PERIOD_DAYS[period];
-  const scale = days; // multiplicador de volume conforme o período
-
-  // Distribuição por hora — formato de "sino" com pico entre 10h e 16h,
-  // simulando o horário comercial típico de um suporte.
-  const hourly: HourlyPoint[] = Array.from({ length: 24 }, (_, h) => {
-    const peak = Math.exp(-Math.pow((h - 13) / 4.5, 2));
-    const base = peak * (40 + rand() * 30) * scale;
-    return { hour: `${h.toString().padStart(2, "0")}h`, count: Math.round(base + rand() * 8) };
-  });
-
-  // KPIs derivados do volume horário.
-  const total = hourly.reduce((s, p) => s + p.count, 0);
-  const closed = Math.round(total * (0.78 + rand() * 0.1));        // ~78–88% fechados
-  const dailyAvg = Math.round(total / days);                       // média por dia
-
-  // Gera métricas individuais para cada atendente e já ordena por fechamentos.
-  // 🆕 Também gera as novas métricas de tempo (resposta, 1º contato, fechamento).
-  const agents: Agent[] = AGENT_NAMES.map((name) => {
-    const c = Math.round((closed / AGENT_NAMES.length) * (0.5 + rand() * 1.1));
-    return {
-      name,
-      closed: c,
-      avgTimeMin: Math.round(8 + rand() * 22),
-      avgResponseMin: Math.round((1 + rand() * 5) * 10) / 10,   // 1–6 min
-      firstContactMin: Math.round((0.5 + rand() * 3) * 10) / 10, // 0,5–3,5 min
-      avgCloseMin: Math.round(20 + rand() * 90),                 // 20–110 min
-    };
-  }).sort((a, b) => b.closed - a.closed);
-
-  const closedPerAgent = Math.round(closed / agents.length);
-
-  // Série temporal usada no gráfico de tendência (mínimo 7 pontos para visual).
-  const trendDays = Math.max(days, 7);
-  const trend: TrendPoint[] = Array.from({ length: trendDays }, (_, i) => {
-    const dayLabel = `D-${trendDays - 1 - i}`;
-    const abertos = Math.round(80 + rand() * 60);
-    const fechados = Math.round(abertos * (0.7 + rand() * 0.25));
-    const pendentes = Math.max(0, abertos - fechados + Math.round(rand() * 10));
-    return { day: dayLabel, abertos, fechados, pendentes };
-  });
-
-  return {
-    updatedAt: new Date().toISOString(),
-    kpis: {
-      total: { value: total, delta: Math.round((rand() * 30 - 10) * 10) / 10 },
-      closed: { value: closed, delta: Math.round((rand() * 25 - 5) * 10) / 10 },
-      dailyAvg: { value: dailyAvg, delta: Math.round((rand() * 20 - 8) * 10) / 10 },
-      closedPerAgent: { value: closedPerAgent, delta: Math.round((rand() * 20 - 8) * 10) / 10 },
-    },
-    hourly,
-    agents,
-    trend,
-  };
-}
-
-// Rótulos amigáveis exibidos nos botões de filtro de período.
-export const PERIOD_LABELS: Record<PeriodKey, string> = {
-  today: "Hoje",
-  yesterday: "Ontem",
-  "7d": "Últimos 7 dias",
-  "30d": "Últimos 30 dias",
-};nt;
+  const total = current.totalTicketsCount;
   const closed = current.closedTicketsCount;
   const dailyAvg = days ? Math.round(total / days) : total;
   const prevDailyAvg = previous && days ? Math.round(previous.totalTicketsCount / days) : 0;
@@ -524,12 +302,17 @@ async function fetchAgentsRanking(
       try {
         const t = await fetchTotals(startPeriod, endPeriod, { ...filters, userId: agent.id });
         const closedCount = t.closedTicketsCount || 0;
+        const totalCount = t.totalTicketsCount || 0;
         const avgTicketMin = closedCount ? Math.round((t.ticketTime / closedCount / 60) * 10) / 10 : 0;
+        // 👉 A API não devolve uma "taxa de resolução" pronta; aproximamos
+        //    como fechados / total de chamados do atendente no período.
+        const resolutionRate = totalCount ? Math.round((closedCount / totalCount) * 1000) / 10 : 0;
 
         return {
           name: agent.name,
           closed: closedCount,
           avgTimeMin: avgTicketMin,
+          resolutionRate,
           avgResponseMin: Math.round((t.waitingTimeAvg / 60) * 10) / 10,
           firstContactMin: closedCount ? Math.round((t.waitingTimeAfterBot / closedCount / 60) * 10) / 10 : 0,
           avgCloseMin: avgTicketMin,

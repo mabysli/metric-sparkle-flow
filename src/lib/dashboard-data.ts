@@ -32,31 +32,24 @@
  */
 
 // Períodos disponíveis no filtro do cabeçalho do dashboard.
-// ⚠️ Mantido apenas por compatibilidade — o filtro visual agora é um
-// intervalo de datas (ver `DateRange` abaixo e `src/routes/index.tsx`).
-export type PeriodKey = "today" | "yesterday" | "7d" | "30d";
+// Mantido apenas como tipo de compatibilidade (usado pelo modo mock).
+export type PeriodKey = "today" | "yesterday" | "7d" | "30d"; //!! mais datas futuramente
 
-/**
- * 🆕 Intervalo de datas selecionado pelo usuário no calendário do cabeçalho.
- * `from` e `to` são strings ISO (YYYY-MM-DD). O backend deve interpretar
- * como intervalo inclusivo.
- */
+/** Intervalo de datas (from/até) usado pelo calendário do cabeçalho e por `fetchDashboard`. */
 export interface DateRange {
-  from: string; // data inicial (YYYY-MM-DD)
-  to: string;   // data final   (YYYY-MM-DD)
+  from: string; // "YYYY-MM-DD"
+  to: string;   // "YYYY-MM-DD"
 }
 
 /** Métricas individuais de um atendente (linha do ranking). */
 export interface Agent {
   name: string;              // nome do atendente
   closed: number;            // total de chamados fechados no período
-  avgTimeMin: number;        // tempo médio de atendimento em minutos
-  // 🆕 Novas métricas de tempo pedidas na revisão do dashboard.
-  // Todas em MINUTOS para ficar consistente com `avgTimeMin`.
-  avgResponseMin: number;    // tempo médio de resposta do chamado
-  firstContactMin: number;   // tempo até o 1º contato humano após o bot
-  avgCloseMin: number;       // tempo médio até o fechamento do chamado
-  // ❌ Removido: `resolutionRate` — o ranking não exibe mais taxa de resolução.
+  avgTimeMin: number;        // tempo médio de atendimento em minutos (campo legado)
+  resolutionRate: number;    // taxa de resolução em % (0–100)
+  avgResponseMin?: number;   // tempo médio de resposta (waitingTimeAvg)
+  firstContactMin?: number;  // tempo médio até o primeiro contato (waitingTimeAfterBot)
+  avgCloseMin?: number;      // tempo médio até o fechamento (ticketTime)
 }
 
 /** Um ponto da curva "atendimentos por hora do dia". */
@@ -80,7 +73,6 @@ export interface DashboardData {
     // Cada KPI tem o valor atual + variação (%) em relação ao período anterior.
     total: { value: number; delta: number };
     closed: { value: number; delta: number };
-    // ❌ Removido: `transferred` — o KPI de "Chamados Transferidos" foi retirado.
     dailyAvg: { value: number; delta: number };
     closedPerAgent: { value: number; delta: number };
   };
@@ -90,21 +82,11 @@ export interface DashboardData {
 }
 
 // Lista fixa de nomes só para o mock parecer realista.
-// 🆕 Ampliada — o gráfico de produtividade agora exibe TODOS os atendentes.
 // (Nomes fictícios — os nomes/IDs reais ficam em `digisac-catalog.ts`.)
 const AGENT_NAMES = [
-  "Ana Silva",
-  "Bruno Costa",
-  "Carla Mendes",
-  "Diego Ramos",
-  "Eduarda Lima",
-  "Felipe Souza",
-  "Gabriela Rocha",
-  "Henrique Alves",
-  "Isabela Prado",
-  "João Martins",
-  "Karina Duarte",
-  "Lucas Ferreira",
+  "Lucas",
+  "Ana",
+  "Manu",
 ];
 
 /**
@@ -156,20 +138,17 @@ export function generateData(period: PeriodKey): DashboardData {
 
   // KPIs derivados do volume horário.
   const total = hourly.reduce((s, p) => s + p.count, 0);
-  const closed = Math.round(total * (0.78 + rand() * 0.1));        // ~78–88% fechados
-  const dailyAvg = Math.round(total / days);                       // média por dia
+  const closed = Math.round(total * (0.78 + rand() * 0.1)); // ~78–88% fechados
+  const dailyAvg = Math.round(total / days);                // média por dia
 
   // Gera métricas individuais para cada atendente e já ordena por fechamentos.
-  // 🆕 Também gera as novas métricas de tempo (resposta, 1º contato, fechamento).
   const agents: Agent[] = AGENT_NAMES.map((name) => {
     const c = Math.round((closed / AGENT_NAMES.length) * (0.5 + rand() * 1.1));
     return {
       name,
       closed: c,
       avgTimeMin: Math.round(8 + rand() * 22),
-      avgResponseMin: Math.round((1 + rand() * 5) * 10) / 10,   // 1–6 min
-      firstContactMin: Math.round((0.5 + rand() * 3) * 10) / 10, // 0,5–3,5 min
-      avgCloseMin: Math.round(20 + rand() * 90),                 // 20–110 min
+      resolutionRate: Math.round((75 + rand() * 22) * 10) / 10,
     };
   }).sort((a, b) => b.closed - a.closed);
 

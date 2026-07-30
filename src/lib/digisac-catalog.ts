@@ -1,13 +1,15 @@
 /**
  * digisac-catalog.ts
  * ============================================================================
- * 🆕 ARQUIVO NOVO — criado durante a integração da API real.
+ * Dados de referência (não são segredo — apenas IDs internos ↔ nomes), usados
+ * por `dashboard-api.ts` para:
+ *   1) montar as chamadas reais à API (departamento padrão e ranking por
+ *      atendente, um pedido por `userId`);
+ *   2) traduzir `userId`/`departmentId` em nomes legíveis, caso a resposta
+ *      da API venha só com IDs.
  *
- * `dashboard-api.ts` (branch HEAD) já importava `AGENTS` e
- * `DEFAULT_DEPARTMENT_ID` daqui, mas o arquivo nunca tinha sido criado —
- * por isso o projeto não compilava. Os IDs abaixo são os reais, confirmados
- * por você (departamento "Fila Suporte - Digisac" e os 14 atendentes com
- * seus `userId`).
+ * Os IDs abaixo são os reais, confirmados (departamento "Fila Suporte -
+ * Digisac" e os 14 atendentes com seus `userId`).
  * ============================================================================
  */
 
@@ -21,18 +23,19 @@ export interface DigisacAgent {
   name: string;
 }
 
-/**
- * Departamentos conhecidos da conta. `filaSuporte` é o departamento usado
- * na requisição real que você mandou; `robo` foi incluído também (aparece
- * na sua lista), caso um dia seja preciso filtrar ou combinar os dois.
- */
-export const DEPARTMENTS: Record<"filaSuporte" | "robo", DigisacDepartment> = {
-  filaSuporte: { id: "aa80cf14-8976-41e9-a597-538399159751", name: "Fila Suporte - Digisac" },
-  robo: { id: "67c13b3e-f547-4f24-b4cf-8544a79ef2b2", name: "Robô" },
-};
+export const DEPARTMENTS: DigisacDepartment[] = [
+  { id: "aa80cf14-8976-41e9-a597-538399159751", name: "Fila Suporte - Digisac" },
+  { id: "67c13b3e-f547-4f24-b4cf-8544a79ef2b2", name: "Robô" },
+];
 
-/** Departamento usado por padrão nas chamadas do dashboard (pode ser sobrescrito via `filters.departmentId`). */
-export const DEFAULT_DEPARTMENT_ID = DEPARTMENTS.filaSuporte.id;
+/**
+ * Departamento usado por padrão no dashboard geral (confirmado pela
+ * requisição real): "Fila Suporte - Digisac" — ou seja, por padrão o
+ * dashboard mostra só atendimento humano, excluindo o departamento "Robô".
+ * Se quiser trocar isso (ex.: um seletor de departamento na UI), passe
+ * `departmentId` explicitamente em `DashboardFilters`.
+ */
+export const DEFAULT_DEPARTMENT_ID = DEPARTMENTS[0].id; // "Fila Suporte - Digisac"
 
 /**
  * Lista real de atendentes (nome + userId) usada por `fetchAgentsRanking`
@@ -41,7 +44,7 @@ export const DEFAULT_DEPARTMENT_ID = DEPARTMENTS.filaSuporte.id;
  */
 export const AGENTS: DigisacAgent[] = [
   { id: "296e0d4c-a546-4746-b6da-5afd9a62f2d4", name: "Manu Oliveira" },
-  { id: "2fd4d5da-6106-474e-a4ea-b97a66ad2b3c", name: "Laura Lopes - arq" },
+  { id: "2fd4d5da-6106-474e-a4ea-b97a66ad2b3c", name: "Laura Lopes" },
   { id: "ea9ff42a-0ac8-4c1b-8685-08d12296a339", name: "Leidiane Magalhães" },
   { id: "e5920e00-5fb8-4b5d-8cce-1c17b12c52f9", name: "Ana Lins" },
   { id: "0778ff09-926d-4c23-9ba4-7540c5a85e51", name: "Bruno Lima" },
@@ -55,3 +58,15 @@ export const AGENTS: DigisacAgent[] = [
   { id: "f92bb80c-0fe9-4283-ac4b-cfb8eb9208d8", name: "Eduardo Martins" },
   { id: "447992bc-8464-47a0-a74f-d4a90313b3c8", name: "Luiz Florindo" },
 ];
+
+/** Busca rápida de nome do atendente a partir do userId (com fallback). */
+export function getAgentName(userId: string | undefined | null): string {
+  if (!userId) return "Desconhecido";
+  return AGENTS.find((a) => a.id === userId)?.name ?? userId;
+}
+
+/** Busca rápida de nome do departamento a partir do departmentId (com fallback). */
+export function getDepartmentName(departmentId: string | undefined | null): string {
+  if (!departmentId) return "Desconhecido";
+  return DEPARTMENTS.find((d) => d.id === departmentId)?.name ?? departmentId;
+}
