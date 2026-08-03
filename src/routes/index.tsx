@@ -51,6 +51,7 @@ import {
 import { KpiCard } from "@/components/dashboard/KpiCard";
 import { ChartCard } from "@/components/dashboard/ChartCard";
 import { type DashboardData, type DateRange } from "@/lib/dashboard-data";
+import { formatDuration } from "@/lib/format-duration"; // 🆕 formata segundos ("10m 1s")
 import { fetchDashboard } from "@/lib/dashboard-api"; // 🔌 ponto de integração com a API
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
@@ -89,7 +90,8 @@ function defaultRange(): DateRange {
   const to = new Date();
   const from = new Date();
   from.setDate(from.getDate() - 6);
-  return { from: toISODate(from), to: toISODate(to) };
+  // 🆕 (ALTERAÇÃO) O intervalo agora carrega também as HORAS de início/fim.
+  return { from: toISODate(from), to: toISODate(to), fromTime: "00:00", toTime: "23:59" };
 }
 
 /** Formata uma data ISO em pt-BR para exibir no cabeçalho. */
@@ -147,19 +149,19 @@ function DashboardPage() {
     load(controller.signal);
     return () => controller.abort();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [range.from, range.to]);
+  }, [range.from, range.to, range.fromTime, range.toTime]);
 
   // Atualização automática a cada 60 segundos (requisito do projeto).
   useEffect(() => {
     const id = setInterval(() => load(), AUTO_REFRESH_MS);
     return () => clearInterval(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [range.from, range.to]);
+  }, [range.from, range.to, range.fromTime, range.toTime]);
 
   return (
     <div className="min-h-screen bg-background">
       <Header
-        updatedAt={data?.updatedAt ?? new Date().toISOString()}
+        updatedAt={data?.updatedAt ?? null}
         range={range}
         onRangeChange={setRange}
         onRefresh={() => load()}
@@ -202,13 +204,17 @@ function Header({
   onRangeChange,
   onRefresh,
 }: {
-  updatedAt: string;
+  updatedAt: string | null;
   range: DateRange;
   onRangeChange: (r: DateRange) => void;
   onRefresh: () => void;
 }) {
   // Estado local apenas para animar o ícone girando ao clicar em "Atualizar".
   const [spin, setSpin] = useState(false);
+  // Evita diferença entre servidor e navegador ao formatar a data/hora:
+  // só mostramos o horário depois que o componente monta no browser.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
   const handleRefresh = () => {
     setSpin(true);
     onRefresh();
@@ -226,7 +232,13 @@ function Header({
 
   const handleSelectRange = (r: RdpRange | undefined) => {
     if (r?.from && r?.to) {
-      onRangeChange({ from: toISODate(r.from), to: toISODate(r.to) });
+      // 🆕 Preserva as horas escolhidas ao trocar as datas.
+      onRangeChange({
+        from: toISODate(r.from),
+        to: toISODate(r.to),
+        fromTime: range.fromTime ?? "00:00",
+        toTime: range.toTime ?? "23:59",
+      });
     }
   };
 
@@ -238,6 +250,8 @@ function Header({
           "dd MMM, yyyy",
           { locale: ptBR },
         )}`;
+  // 🆕 Mostra as horas selecionadas junto do intervalo no botão do filtro.
+  const fullLabel = `${rangeLabel} · ${range.fromTime ?? "00:00"}–${range.toTime ?? "23:59"}`;
 
   return (
     <header className="sticky top-0 z-30 border-b border-border bg-background/85 backdrop-blur-md">
@@ -253,7 +267,8 @@ function Header({
           <div className="min-w-0">
             <h1 className="truncate text-lg font-bold tracking-tight text-foreground">Dashboard</h1>
             <p className="truncate text-xs text-muted-foreground">
-              Última atualização: <span className="tabular-nums">{formatTime(updatedAt)}</span>
+              Última atualização:{" "}
+              <span className="tabular-nums">{mounted && updatedAt ? formatTime(updatedAt) : "—"}</span>
             </p>
           </div>
         </div>
@@ -268,7 +283,7 @@ function Header({
                 className="h-8 gap-2 rounded-lg border-border bg-card text-xs font-medium text-foreground shadow-sm hover:bg-accent"
               >
                 <CalendarIcon className="h-3.5 w-3.5" />
-                {rangeLabel}
+                {fullLabel}
               </Button>
             </PopoverTrigger>
             <PopoverContent align="end" className="w-auto p-0">
@@ -282,6 +297,29 @@ function Header({
                 locale={ptBR}
                 className={cn("p-3 pointer-events-auto")}
               />
+              {/* 🆕 (ALTERAÇÃO) Seleção de HORA de início e de fim, logo abaixo
+                  do calendário — pedido: "na filtragem por data apareça um
+                  lugar para selecionar por hora". */}
+              <div className="flex items-end gap-3 border-t border-border p-3">
+                <label className="flex flex-1 flex-col gap-1 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+                  Hora inicial
+                  <input
+                    type="time"
+                    value={range.fromTime ?? "00:00"}
+                    onChange={(e) => onRangeChange({ ...range, fromTime: e.target.value })}
+                    className="rounded-md border border-border bg-background px-2 py-1 text-sm text-foreground"
+                  />
+                </label>
+                <label className="flex flex-1 flex-col gap-1 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+                  Hora final
+                  <input
+                    type="time"
+                    value={range.toTime ?? "23:59"}
+                    onChange={(e) => onRangeChange({ ...range, toTime: e.target.value })}
+                    className="rounded-md border border-border bg-background px-2 py-1 text-sm text-foreground"
+                  />
+                </label>
+              </div>
             </PopoverContent>
           </Popover>
           <button
