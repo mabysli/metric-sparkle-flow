@@ -369,18 +369,39 @@ function KpiGrid({ data, loading }: { data: DashboardData | null; loading: boole
   const empty = { value: 0, delta: 0 };
   const k = data?.kpis ?? {
     total: empty,
+    open: empty,
     closed: empty,
     dailyAvg: empty,
     closedPerAgent: empty,
+    tma: empty,
+    pte: empty,
+    tme: empty,
+    botWait: empty,
+    resolutionRate: empty,
+    contacts: empty,
+    messages: empty,
   };
   const fmt = (n: number) => n.toLocaleString("pt-BR");
   return (
     // ❌ KPI "Chamados Transferidos" removido conforme solicitado.
-    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+    // 🆕 (ALTERAÇÃO) Grade ampliada com TODAS as variáveis da imagem enviada.
+    //    Os KPIs de tempo chegam em SEGUNDOS e são formatados por
+    //    `formatDuration` (ex.: "7h 6m", "10m 1s", "45s").
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
       <KpiCard label="Total de Chamados" value={fmt(k.total.value)} delta={k.total.delta} icon={Inbox} tone="primary" loading={loading} />
+      <KpiCard label="Chamados Abertos" value={fmt(k.open.value)} delta={k.open.delta} icon={Activity} tone="warning" loading={loading} />
       <KpiCard label="Chamados Fechados" value={fmt(k.closed.value)} delta={k.closed.delta} icon={CheckCircle2} tone="success" loading={loading} />
       <KpiCard label="Média de Atendimentos / Dia" value={fmt(k.dailyAvg.value)} delta={k.dailyAvg.delta} icon={TrendingUp} tone="info" loading={loading} />
       <KpiCard label="Fechados por Atendente" value={fmt(k.closedPerAgent.value)} delta={k.closedPerAgent.delta} icon={UserCheck} tone="primary" loading={loading} />
+      {/* 🆕 Tempos (em segundos, formatados) */}
+      <KpiCard label="TMA — Tempo Médio de Atendimento" value={formatDuration(k.tma.value)} delta={k.tma.delta} icon={Clock} tone="info" loading={loading} />
+      <KpiCard label="PTE — Primeiro Tempo de Espera" value={formatDuration(k.pte.value)} delta={k.pte.delta} icon={Timer} tone="warning" loading={loading} />
+      <KpiCard label="TME — Tempo Médio de Espera" value={formatDuration(k.tme.value)} delta={k.tme.delta} icon={Timer} tone="primary" loading={loading} />
+      <KpiCard label="Espera após o Bot" value={formatDuration(k.botWait.value)} delta={k.botWait.delta} icon={Zap} tone="info" loading={loading} />
+      {/* 🆕 Qualidade e volume */}
+      <KpiCard label="Taxa de Resolução" value={`${k.resolutionRate.value.toFixed(1)}%`} delta={k.resolutionRate.delta} icon={Trophy} tone="success" loading={loading} />
+      <KpiCard label="Contatos" value={fmt(k.contacts.value)} delta={k.contacts.delta} icon={UserCheck} tone="info" loading={loading} />
+      <KpiCard label="Mensagens" value={fmt(k.messages.value)} delta={k.messages.delta} icon={MessageSquare} tone="primary" loading={loading} />
     </div>
   );
 }
