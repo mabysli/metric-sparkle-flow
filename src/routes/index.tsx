@@ -51,6 +51,7 @@ import {
 import { KpiCard } from "@/components/dashboard/KpiCard";
 import { ChartCard } from "@/components/dashboard/ChartCard";
 import { type DashboardData, type DateRange } from "@/lib/dashboard-data";
+import { formatDuration } from "@/lib/format-duration"; // 🆕 formata segundos ("10m 1s")
 import { fetchDashboard } from "@/lib/dashboard-api"; // 🔌 ponto de integração com a API
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
@@ -89,7 +90,8 @@ function defaultRange(): DateRange {
   const to = new Date();
   const from = new Date();
   from.setDate(from.getDate() - 6);
-  return { from: toISODate(from), to: toISODate(to) };
+  // 🆕 (ALTERAÇÃO) O intervalo agora carrega também as HORAS de início/fim.
+  return { from: toISODate(from), to: toISODate(to), fromTime: "00:00", toTime: "23:59" };
 }
 
 /** Formata uma data ISO em pt-BR para exibir no cabeçalho. */
@@ -147,19 +149,19 @@ function DashboardPage() {
     load(controller.signal);
     return () => controller.abort();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [range.from, range.to]);
+  }, [range.from, range.to, range.fromTime, range.toTime]);
 
   // Atualização automática a cada 60 segundos (requisito do projeto).
   useEffect(() => {
     const id = setInterval(() => load(), AUTO_REFRESH_MS);
     return () => clearInterval(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [range.from, range.to]);
+  }, [range.from, range.to, range.fromTime, range.toTime]);
 
   return (
     <div className="min-h-screen bg-background">
       <Header
-        updatedAt={data?.updatedAt ?? new Date().toISOString()}
+        updatedAt={data?.updatedAt ?? null}
         range={range}
         onRangeChange={setRange}
         onRefresh={() => load()}
@@ -202,13 +204,17 @@ function Header({
   onRangeChange,
   onRefresh,
 }: {
-  updatedAt: string;
+  updatedAt: string | null;
   range: DateRange;
   onRangeChange: (r: DateRange) => void;
   onRefresh: () => void;
 }) {
   // Estado local apenas para animar o ícone girando ao clicar em "Atualizar".
   const [spin, setSpin] = useState(false);
+  // Evita diferença entre servidor e navegador ao formatar a data/hora:
+  // só mostramos o horário depois que o componente monta no browser.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
   const handleRefresh = () => {
     setSpin(true);
     onRefresh();
@@ -226,7 +232,13 @@ function Header({
 
   const handleSelectRange = (r: RdpRange | undefined) => {
     if (r?.from && r?.to) {
-      onRangeChange({ from: toISODate(r.from), to: toISODate(r.to) });
+      // 🆕 Preserva as horas escolhidas ao trocar as datas.
+      onRangeChange({
+        from: toISODate(r.from),
+        to: toISODate(r.to),
+        fromTime: range.fromTime ?? "00:00",
+        toTime: range.toTime ?? "23:59",
+      });
     }
   };
 
@@ -238,6 +250,8 @@ function Header({
           "dd MMM, yyyy",
           { locale: ptBR },
         )}`;
+  // 🆕 Mostra as horas selecionadas junto do intervalo no botão do filtro.
+  const fullLabel = `${rangeLabel} · ${range.fromTime ?? "00:00"}–${range.toTime ?? "23:59"}`;
 
   return (
     <header className="sticky top-0 z-30 border-b border-border bg-background/85 backdrop-blur-md">
@@ -253,7 +267,8 @@ function Header({
           <div className="min-w-0">
             <h1 className="truncate text-lg font-bold tracking-tight text-foreground">Dashboard</h1>
             <p className="truncate text-xs text-muted-foreground">
-              Última atualização: <span className="tabular-nums">{formatTime(updatedAt)}</span>
+              Última atualização:{" "}
+              <span className="tabular-nums">{mounted && updatedAt ? formatTime(updatedAt) : "—"}</span>
             </p>
           </div>
         </div>
@@ -268,7 +283,7 @@ function Header({
                 className="h-8 gap-2 rounded-lg border-border bg-card text-xs font-medium text-foreground shadow-sm hover:bg-accent"
               >
                 <CalendarIcon className="h-3.5 w-3.5" />
-                {rangeLabel}
+                {fullLabel}
               </Button>
             </PopoverTrigger>
             <PopoverContent align="end" className="w-auto p-0">
@@ -282,6 +297,29 @@ function Header({
                 locale={ptBR}
                 className={cn("p-3 pointer-events-auto")}
               />
+              {/* 🆕 (ALTERAÇÃO) Seleção de HORA de início e de fim, logo abaixo
+                  do calendário — pedido: "na filtragem por data apareça um
+                  lugar para selecionar por hora". */}
+              <div className="flex items-end gap-3 border-t border-border p-3">
+                <label className="flex flex-1 flex-col gap-1 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+                  Hora inicial
+                  <input
+                    type="time"
+                    value={range.fromTime ?? "00:00"}
+                    onChange={(e) => onRangeChange({ ...range, fromTime: e.target.value })}
+                    className="rounded-md border border-border bg-background px-2 py-1 text-sm text-foreground"
+                  />
+                </label>
+                <label className="flex flex-1 flex-col gap-1 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+                  Hora final
+                  <input
+                    type="time"
+                    value={range.toTime ?? "23:59"}
+                    onChange={(e) => onRangeChange({ ...range, toTime: e.target.value })}
+                    className="rounded-md border border-border bg-background px-2 py-1 text-sm text-foreground"
+                  />
+                </label>
+              </div>
             </PopoverContent>
           </Popover>
           <button
@@ -331,18 +369,39 @@ function KpiGrid({ data, loading }: { data: DashboardData | null; loading: boole
   const empty = { value: 0, delta: 0 };
   const k = data?.kpis ?? {
     total: empty,
+    open: empty,
     closed: empty,
     dailyAvg: empty,
     closedPerAgent: empty,
+    tma: empty,
+    pte: empty,
+    tme: empty,
+    botWait: empty,
+    resolutionRate: empty,
+    contacts: empty,
+    messages: empty,
   };
   const fmt = (n: number) => n.toLocaleString("pt-BR");
   return (
     // ❌ KPI "Chamados Transferidos" removido conforme solicitado.
-    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+    // 🆕 (ALTERAÇÃO) Grade ampliada com TODAS as variáveis da imagem enviada.
+    //    Os KPIs de tempo chegam em SEGUNDOS e são formatados por
+    //    `formatDuration` (ex.: "7h 6m", "10m 1s", "45s").
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
       <KpiCard label="Total de Chamados" value={fmt(k.total.value)} delta={k.total.delta} icon={Inbox} tone="primary" loading={loading} />
+      <KpiCard label="Chamados Abertos" value={fmt(k.open.value)} delta={k.open.delta} icon={Activity} tone="warning" loading={loading} />
       <KpiCard label="Chamados Fechados" value={fmt(k.closed.value)} delta={k.closed.delta} icon={CheckCircle2} tone="success" loading={loading} />
       <KpiCard label="Média de Atendimentos / Dia" value={fmt(k.dailyAvg.value)} delta={k.dailyAvg.delta} icon={TrendingUp} tone="info" loading={loading} />
       <KpiCard label="Fechados por Atendente" value={fmt(k.closedPerAgent.value)} delta={k.closedPerAgent.delta} icon={UserCheck} tone="primary" loading={loading} />
+      {/* 🆕 Tempos (em segundos, formatados) */}
+      <KpiCard label="TMA — Tempo Médio de Atendimento" value={formatDuration(k.tma.value)} delta={k.tma.delta} icon={Clock} tone="info" loading={loading} />
+      <KpiCard label="PTE — Primeiro Tempo de Espera" value={formatDuration(k.pte.value)} delta={k.pte.delta} icon={Timer} tone="warning" loading={loading} />
+      <KpiCard label="TME — Tempo Médio de Espera" value={formatDuration(k.tme.value)} delta={k.tme.delta} icon={Timer} tone="primary" loading={loading} />
+      <KpiCard label="Espera após o Bot" value={formatDuration(k.botWait.value)} delta={k.botWait.delta} icon={Zap} tone="info" loading={loading} />
+      {/* 🆕 Qualidade e volume */}
+      <KpiCard label="Taxa de Resolução" value={`${k.resolutionRate.value.toFixed(1)}%`} delta={k.resolutionRate.delta} icon={Trophy} tone="success" loading={loading} />
+      <KpiCard label="Contatos" value={fmt(k.contacts.value)} delta={k.contacts.delta} icon={UserCheck} tone="info" loading={loading} />
+      <KpiCard label="Mensagens" value={fmt(k.messages.value)} delta={k.messages.delta} icon={MessageSquare} tone="primary" loading={loading} />
     </div>
   );
 }
@@ -506,7 +565,8 @@ function TrendChart({ data, loading }: { data: DashboardData | null; loading: bo
 
 // Chaves possíveis de ordenação (nome de coluna).
 // 🆕 Substituímos `resolutionRate` pelas novas métricas de tempo.
-type SortKey = "closed" | "avgTimeMin" | "avgResponseMin" | "firstContactMin" | "avgCloseMin" | "name";
+// 🆕 (ALTERAÇÃO) Ordenamos pelas versões em SEGUNDOS das métricas de tempo.
+type SortKey = "closed" | "avgTimeSec" | "avgResponseSec" | "firstContactSec" | "avgCloseSec" | "name";
 
 function RankingTable({
   data,
@@ -525,8 +585,8 @@ function RankingTable({
   const rows = useMemo(() => {
     const r = data ? [...data.agents] : [];
     r.sort((a, b) => {
-      const av = a[sort.key] as number | string;
-      const bv = b[sort.key] as number | string;
+      const av = (a[sort.key] ?? 0) as number | string;
+      const bv = (b[sort.key] ?? 0) as number | string;
       if (av < bv) return sort.dir === "asc" ? -1 : 1;
       if (av > bv) return sort.dir === "asc" ? 1 : -1;
       return 0;
@@ -565,11 +625,11 @@ function RankingTable({
               <tr className="border-b border-border">
                 <Th k="name">Atendente</Th>
                 <Th k="closed" align="right">Fechados</Th>
-                <Th k="avgTimeMin" align="right">Tempo Médio</Th>
+                <Th k="avgTimeSec" align="right">Tempo Médio</Th>
                 {/* 🆕 Novas colunas de tempo (substituem a "Taxa Resolução") */}
-                <Th k="avgResponseMin" align="right">T. Resposta</Th>
-                <Th k="firstContactMin" align="right">1º Contato</Th>
-                <Th k="avgCloseMin" align="right">T. Fechamento</Th>
+                <Th k="avgResponseSec" align="right">T. Resposta</Th>
+                <Th k="firstContactSec" align="right">1º Contato</Th>
+                <Th k="avgCloseSec" align="right">T. Fechamento</Th>
               </tr>
             </thead>
             <tbody>
@@ -590,16 +650,18 @@ function RankingTable({
                   <td className="px-4 py-3 text-right text-sm font-semibold tabular-nums text-foreground">
                     {a.closed.toLocaleString("pt-BR")}
                   </td>
-                  <td className="px-4 py-3 text-right text-sm tabular-nums text-muted-foreground">{a.avgTimeMin} min</td>
-                  {/* 🆕 Novas células de tempo (em minutos) */}
+                  {/* 🆕 Todas as células de tempo agora exibem SEGUNDOS ("10m 1s") */}
                   <td className="px-4 py-3 text-right text-sm tabular-nums text-muted-foreground">
-                    {a.avgResponseMin.toFixed(1)} min
+                    {formatDuration(a.avgTimeSec)}
                   </td>
                   <td className="px-4 py-3 text-right text-sm tabular-nums text-muted-foreground">
-                    {a.firstContactMin.toFixed(1)} min
+                    {formatDuration(a.avgResponseSec)}
                   </td>
                   <td className="px-4 py-3 text-right text-sm tabular-nums text-muted-foreground">
-                    {a.avgCloseMin} min
+                    {formatDuration(a.firstContactSec)}
+                  </td>
+                  <td className="px-4 py-3 text-right text-sm tabular-nums text-muted-foreground">
+                    {formatDuration(a.avgCloseSec)}
                   </td>
                 </tr>
               ))}
@@ -629,25 +691,26 @@ function InsightsPanel({ data, loading }: { data: DashboardData | null; loading:
     const topAgent = data.agents[0];
 
     // Atendente com menor tempo médio = mais rápido.
-    const fastest = [...data.agents].sort((a, b) => a.avgTimeMin - b.avgTimeMin)[0];
+    const fastest = [...data.agents].sort((a, b) => (a.avgTimeSec ?? 0) - (b.avgTimeSec ?? 0))[0];
 
     // 🆕 Substituímos a "taxa de resolução" pelos novos tempos médios da equipe.
+    // 🆕 Médias da equipe em SEGUNDOS.
     const avgResponse =
-      data.agents.reduce((s, a) => s + a.avgResponseMin, 0) / Math.max(data.agents.length, 1);
+      data.agents.reduce((s, a) => s + (a.avgResponseSec ?? 0), 0) / Math.max(data.agents.length, 1);
     const avgFirstContact =
-      data.agents.reduce((s, a) => s + a.firstContactMin, 0) / Math.max(data.agents.length, 1);
+      data.agents.reduce((s, a) => s + (a.firstContactSec ?? 0), 0) / Math.max(data.agents.length, 1);
     const avgClose =
-      data.agents.reduce((s, a) => s + a.avgCloseMin, 0) / Math.max(data.agents.length, 1);
+      data.agents.reduce((s, a) => s + (a.avgCloseSec ?? 0), 0) / Math.max(data.agents.length, 1);
 
     return [
       { icon: Zap, tone: "primary" as const, label: "Pico de atendimentos", value: `${peak.hour} · ${peak.count} chamados` },
       { icon: Clock, tone: "info" as const, label: "Menor movimento", value: `${low.hour} · ${low.count} chamados` },
       { icon: Trophy, tone: "success" as const, label: "Maior produtividade", value: `${topAgent.name} · ${topAgent.closed}` },
-      { icon: Activity, tone: "warning" as const, label: "Menor tempo médio", value: `${fastest.name} · ${fastest.avgTimeMin} min` },
-      // 🆕 Insights de tempo da equipe
-      { icon: MessageSquare, tone: "info" as const, label: "T. médio de resposta", value: `${avgResponse.toFixed(1)} min` },
-      { icon: Timer, tone: "primary" as const, label: "T. 1º contato (pós-bot)", value: `${avgFirstContact.toFixed(1)} min` },
-      { icon: CheckCircle2, tone: "success" as const, label: "T. médio de fechamento", value: `${avgClose.toFixed(0)} min` },
+      { icon: Activity, tone: "warning" as const, label: "Menor tempo médio", value: `${fastest.name} · ${formatDuration(fastest.avgTimeSec)}` },
+      // 🆕 Insights de tempo da equipe (com segundos)
+      { icon: MessageSquare, tone: "info" as const, label: "T. médio de resposta", value: formatDuration(avgResponse) },
+      { icon: Timer, tone: "primary" as const, label: "T. 1º contato (pós-bot)", value: formatDuration(avgFirstContact) },
+      { icon: CheckCircle2, tone: "success" as const, label: "T. médio de fechamento", value: formatDuration(avgClose) },
     ];
   }, [data]);
 

@@ -39,6 +39,10 @@ export type PeriodKey = "today" | "yesterday" | "7d" | "30d"; //!! mais datas fu
 export interface DateRange {
   from: string; // "YYYY-MM-DD"
   to: string;   // "YYYY-MM-DD"
+  // 🆕 (ALTERAÇÃO) Agora o filtro também aceita HORA de início e de fim.
+  // Formato "HH:MM". Quando ausentes, assumimos 00:00 e 23:59.
+  fromTime?: string;
+  toTime?: string;
 }
 
 /** Métricas individuais de um atendente (linha do ranking). */
@@ -50,6 +54,13 @@ export interface Agent {
   avgResponseMin?: number;   // tempo médio de resposta (waitingTimeAvg)
   firstContactMin?: number;  // tempo médio até o primeiro contato (waitingTimeAfterBot)
   avgCloseMin?: number;      // tempo médio até o fechamento (ticketTime)
+  // 🆕 (ALTERAÇÃO) Versões em SEGUNDOS — são estas que a tela exibe agora,
+  // formatadas por `formatDuration` (ex.: "10m 1s"). Os campos em minutos
+  // acima ficam só por compatibilidade.
+  avgTimeSec?: number;
+  avgResponseSec?: number;
+  firstContactSec?: number;
+  avgCloseSec?: number;
 }
 
 /** Um ponto da curva "atendimentos por hora do dia". */
@@ -66,15 +77,30 @@ export interface TrendPoint {
   pendentes: number;  // chamados ainda pendentes
 }
 
+/** Um KPI: valor atual + variação (%) em relação ao período anterior. */
+export interface KpiValue {
+  value: number;
+  delta: number;
+}
+
 /** Estrutura completa retornada pela API/mock para a tela do dashboard. */
 export interface DashboardData {
   updatedAt: string; // ISO timestamp — usado no cabeçalho "Última atualização"
+  // 🆕 (ALTERAÇÃO) Conjunto de KPIs ampliado para cobrir TODAS as variáveis
+  // da imagem enviada. Os KPIs de tempo estão em SEGUNDOS.
   kpis: {
-    // Cada KPI tem o valor atual + variação (%) em relação ao período anterior.
-    total: { value: number; delta: number };
-    closed: { value: number; delta: number };
-    dailyAvg: { value: number; delta: number };
-    closedPerAgent: { value: number; delta: number };
+    total: KpiValue;          // Total Atendido (totalTicketsCount)
+    open: KpiValue;           // 🆕 Chamados Abertos (openedTicketsCount)
+    closed: KpiValue;         // Chamados Fechados (closedTicketsCount)
+    dailyAvg: KpiValue;       // Média de atendimentos por dia
+    closedPerAgent: KpiValue; // Fechados por atendente
+    tma: KpiValue;            // 🆕 Tempo Médio de Atendimento (ticketTime médio), em s
+    pte: KpiValue;            // 🆕 Primeiro Tempo de Espera (waitingTime médio), em s
+    tme: KpiValue;            // 🆕 Tempo Médio de Espera (waitingTimeAvg), em s
+    botWait: KpiValue;        // 🆕 Espera após o Bot (waitingTimeAfterBot médio), em s
+    resolutionRate: KpiValue; // 🆕 Taxa de Resolução (%)
+    contacts: KpiValue;       // 🆕 Contatos (contactsCount)
+    messages: KpiValue;       // 🆕 Mensagens (totalMessagesCount)
   };
   hourly: HourlyPoint[]; // série para o gráfico "Atendimentos ao longo do dia"
   agents: Agent[];       // lista usada no gráfico de produtividade e na tabela
@@ -144,11 +170,22 @@ export function generateData(period: PeriodKey): DashboardData {
   // Gera métricas individuais para cada atendente e já ordena por fechamentos.
   const agents: Agent[] = AGENT_NAMES.map((name) => {
     const c = Math.round((closed / AGENT_NAMES.length) * (0.5 + rand() * 1.1));
+    // 🆕 Mock agora também gera os tempos em segundos.
+    const avgCloseSec = Math.round((8 + rand() * 22) * 60 + rand() * 59);
+    const avgResponseSec = Math.round(60 + rand() * 600);
+    const firstContactSec = Math.round(30 + rand() * 400);
     return {
       name,
       closed: c,
-      avgTimeMin: Math.round(8 + rand() * 22),
+      avgTimeMin: Math.round(avgCloseSec / 60),
       resolutionRate: Math.round((75 + rand() * 22) * 10) / 10,
+      avgResponseMin: Math.round((avgResponseSec / 60) * 10) / 10,
+      firstContactMin: Math.round((firstContactSec / 60) * 10) / 10,
+      avgCloseMin: Math.round(avgCloseSec / 60),
+      avgTimeSec: avgCloseSec,
+      avgResponseSec,
+      firstContactSec,
+      avgCloseSec,
     };
   }).sort((a, b) => b.closed - a.closed);
 
@@ -168,9 +205,18 @@ export function generateData(period: PeriodKey): DashboardData {
     updatedAt: new Date().toISOString(),
     kpis: {
       total: { value: total, delta: Math.round((rand() * 30 - 10) * 10) / 10 },
+      open: { value: Math.max(0, total - closed), delta: Math.round((rand() * 20 - 8) * 10) / 10 },
       closed: { value: closed, delta: Math.round((rand() * 25 - 5) * 10) / 10 },
       dailyAvg: { value: dailyAvg, delta: Math.round((rand() * 20 - 8) * 10) / 10 },
       closedPerAgent: { value: closedPerAgent, delta: Math.round((rand() * 20 - 8) * 10) / 10 },
+      // 🆕 KPIs novos (tempos em segundos)
+      tma: { value: Math.round(3600 * 6 + rand() * 3600), delta: Math.round((rand() * 20 - 10) * 10) / 10 },
+      pte: { value: Math.round(300 + rand() * 900), delta: Math.round((rand() * 20 - 10) * 10) / 10 },
+      tme: { value: Math.round(120 + rand() * 600), delta: Math.round((rand() * 20 - 10) * 10) / 10 },
+      botWait: { value: Math.round(200 + rand() * 800), delta: Math.round((rand() * 20 - 10) * 10) / 10 },
+      resolutionRate: { value: Math.round((80 + rand() * 20) * 10) / 10, delta: Math.round((rand() * 10 - 5) * 10) / 10 },
+      contacts: { value: Math.round(total * (0.6 + rand() * 0.4)), delta: Math.round((rand() * 20 - 8) * 10) / 10 },
+      messages: { value: Math.round(total * (6 + rand() * 6)), delta: Math.round((rand() * 20 - 8) * 10) / 10 },
     },
     hourly,
     agents,

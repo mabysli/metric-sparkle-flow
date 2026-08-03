@@ -150,12 +150,19 @@ function daysBetween(range: DateRange): number {
   return Math.max(1, Math.round((end - start) / 86_400_000) + 1);
 }
 
-/** Converte o `DateRange` (from/to em YYYY-MM-DD) em instantes ISO completos para a API. */
+/**
+ * Converte o `DateRange` em instantes ISO completos para a API.
+ * 🆕 (ALTERAÇÃO) Agora respeita as HORAS escolhidas no filtro
+ * (`fromTime`/`toTime`, formato "HH:MM"). Sem horas → 00:00 até 23:59:59.
+ */
 function getRangeAsISO(range: DateRange): { startPeriod: string; endPeriod: string } {
-  return {
-    startPeriod: startOfDayUTC(new Date(`${range.from}T00:00:00.000Z`)).toISOString(),
-    endPeriod: endOfDayUTC(new Date(`${range.to}T00:00:00.000Z`)).toISOString(),
-  };
+  const start = range.fromTime
+    ? new Date(`${range.from}T${range.fromTime}:00.000Z`)
+    : startOfDayUTC(new Date(`${range.from}T00:00:00.000Z`));
+  const end = range.toTime
+    ? new Date(`${range.to}T${range.toTime}:59.999Z`)
+    : endOfDayUTC(new Date(`${range.to}T00:00:00.000Z`));
+  return { startPeriod: start.toISOString(), endPeriod: end.toISOString() };
 }
 
 /** Intervalo imediatamente anterior, com a mesma duração — usado pro delta (%) dos KPIs. */
@@ -263,19 +270,62 @@ function pctDelta(curr: number, prev: number): number {
   return Math.round(((curr - prev) / prev) * 1000) / 10;
 }
 
-/** ❌ Não gera mais `transferred` — a API não devolve esse dado (ver cabeçalho do arquivo). */
+/**
+ * ❌ Não gera mais `transferred` — a API não devolve esse dado.
+ *
+ * 🆕 (ALTERAÇÃO DESTA REVISÃO) Passou a montar TODAS as variáveis da imagem
+ * enviada, direto dos campos reais de `/dashboard/general`:
+ *   - Total Atendido     ← totalTicketsCount
+ *   - Chamados Abertos   ← openedTicketsCount
+ *   - Chamados Fechados  ← closedTicketsCount
+ *   - TMA (s)            ← ticketTime / chamados fechados
+ *   - PTE (s)            ← waitingTime / chamados totais
+ *   - TME (s)            ← waitingTimeAvg (já é média)
+ *   - Espera após Bot (s)← waitingTimeAfterBot / chamados totais
+ *   - Taxa de Resolução  ← fechados / total * 100
+ *   - Contatos           ← contactsCount
+ *   - Mensagens          ← totalMessagesCount
+ * Todos os tempos ficam em SEGUNDOS e são formatados na tela.
+ */
 function buildKpis(current: DigisacTotals, previous: DigisacTotals | null, agentsCount: number, days: number) {
   const total = current.totalTicketsCount;
+  const open = current.openedTicketsCount;
   const closed = current.closedTicketsCount;
   const dailyAvg = days ? Math.round(total / days) : total;
   const prevDailyAvg = previous && days ? Math.round(previous.totalTicketsCount / days) : 0;
   const closedPerAgent = agentsCount ? Math.round(closed / agentsCount) : 0;
 
+  // Helpers de média (evitam divisão por zero).
+  const avg = (value: number, count: number) => (count ? Math.round(value / count) : 0);
+  const rate = (a: number, b: number) => (b ? Math.round((a / b) * 1000) / 10 : 0);
+
+  const tma = avg(current.ticketTime, closed);
+  const pte = avg(current.waitingTime, total);
+  const tme = Math.round(current.waitingTimeAvg);
+  const botWait = avg(current.waitingTimeAfterBot, total);
+  const resolutionRate = rate(closed, total);
+
+  // Mesmos cálculos no período anterior, para os deltas (%).
+  const p = previous;
+  const pTotal = p?.totalTicketsCount ?? 0;
+  const pClosed = p?.closedTicketsCount ?? 0;
+
   return {
-    total: { value: total, delta: previous ? pctDelta(total, previous.totalTicketsCount) : 0 },
-    closed: { value: closed, delta: previous ? pctDelta(closed, previous.closedTicketsCount) : 0 },
-    dailyAvg: { value: dailyAvg, delta: previous ? pctDelta(dailyAvg, prevDailyAvg) : 0 },
+    total: { value: total, delta: p ? pctDelta(total, pTotal) : 0 },
+    open: { value: open, delta: p ? pctDelta(open, p.openedTicketsCount) : 0 },
+    closed: { value: closed, delta: p ? pctDelta(closed, pClosed) : 0 },
+    dailyAvg: { value: dailyAvg, delta: p ? pctDelta(dailyAvg, prevDailyAvg) : 0 },
     closedPerAgent: { value: closedPerAgent, delta: 0 },
+    tma: { value: tma, delta: p ? pctDelta(tma, avg(p.ticketTime, pClosed)) : 0 },
+    pte: { value: pte, delta: p ? pctDelta(pte, avg(p.waitingTime, pTotal)) : 0 },
+    tme: { value: tme, delta: p ? pctDelta(tme, Math.round(p.waitingTimeAvg)) : 0 },
+    botWait: { value: botWait, delta: p ? pctDelta(botWait, avg(p.waitingTimeAfterBot, pTotal)) : 0 },
+    resolutionRate: { value: resolutionRate, delta: p ? pctDelta(resolutionRate, rate(pClosed, pTotal)) : 0 },
+    contacts: { value: current.contactsCount, delta: p ? pctDelta(current.contactsCount, p.contactsCount) : 0 },
+    messages: {
+      value: current.totalMessagesCount,
+      delta: p ? pctDelta(current.totalMessagesCount, p.totalMessagesCount) : 0,
+    },
   };
 }
 
@@ -303,7 +353,12 @@ async function fetchAgentsRanking(
         const t = await fetchTotals(startPeriod, endPeriod, { ...filters, userId: agent.id });
         const closedCount = t.closedTicketsCount || 0;
         const totalCount = t.totalTicketsCount || 0;
-        const avgTicketMin = closedCount ? Math.round((t.ticketTime / closedCount / 60) * 10) / 10 : 0;
+        // 🆕 (ALTERAÇÃO) Guardamos os tempos em SEGUNDOS (sem arredondar para
+        //    minutos) para conseguir exibir "10m 1s" na tabela do ranking.
+        const avgCloseSec = closedCount ? Math.round(t.ticketTime / closedCount) : 0;
+        const avgResponseSec = Math.round(t.waitingTimeAvg || 0);
+        const firstContactSec = closedCount ? Math.round(t.waitingTimeAfterBot / closedCount) : 0;
+        const avgTicketMin = Math.round((avgCloseSec / 60) * 10) / 10;
         // 👉 A API não devolve uma "taxa de resolução" pronta; aproximamos
         //    como fechados / total de chamados do atendente no período.
         const resolutionRate = totalCount ? Math.round((closedCount / totalCount) * 1000) / 10 : 0;
@@ -313,9 +368,13 @@ async function fetchAgentsRanking(
           closed: closedCount,
           avgTimeMin: avgTicketMin,
           resolutionRate,
-          avgResponseMin: Math.round((t.waitingTimeAvg / 60) * 10) / 10,
-          firstContactMin: closedCount ? Math.round((t.waitingTimeAfterBot / closedCount / 60) * 10) / 10 : 0,
+          avgResponseMin: Math.round((avgResponseSec / 60) * 10) / 10,
+          firstContactMin: Math.round((firstContactSec / 60) * 10) / 10,
           avgCloseMin: avgTicketMin,
+          avgTimeSec: avgCloseSec,
+          avgResponseSec,
+          firstContactSec,
+          avgCloseSec,
         } satisfies Agent;
       } catch {
         // Se um atendente falhar (ex.: sem tickets no período), não derruba o dashboard inteiro.
@@ -324,7 +383,9 @@ async function fetchAgentsRanking(
     })
   );
 
-  return results.filter((a): a is Agent => a !== null).sort((a, b) => b.closed - a.closed);
+  return results
+    .filter((a): a is NonNullable<(typeof results)[number]> => a !== null)
+    .sort((a, b) => b.closed - a.closed);
 }
 
 function toTrendPoint(t: DigisacTotals, index: number, total: number): TrendPoint {
