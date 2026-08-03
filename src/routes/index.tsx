@@ -565,7 +565,8 @@ function TrendChart({ data, loading }: { data: DashboardData | null; loading: bo
 
 // Chaves possíveis de ordenação (nome de coluna).
 // 🆕 Substituímos `resolutionRate` pelas novas métricas de tempo.
-type SortKey = "closed" | "avgTimeMin" | "avgResponseMin" | "firstContactMin" | "avgCloseMin" | "name";
+// 🆕 (ALTERAÇÃO) Ordenamos pelas versões em SEGUNDOS das métricas de tempo.
+type SortKey = "closed" | "avgTimeSec" | "avgResponseSec" | "firstContactSec" | "avgCloseSec" | "name";
 
 function RankingTable({
   data,
@@ -584,8 +585,8 @@ function RankingTable({
   const rows = useMemo(() => {
     const r = data ? [...data.agents] : [];
     r.sort((a, b) => {
-      const av = a[sort.key] as number | string;
-      const bv = b[sort.key] as number | string;
+      const av = (a[sort.key] ?? 0) as number | string;
+      const bv = (b[sort.key] ?? 0) as number | string;
       if (av < bv) return sort.dir === "asc" ? -1 : 1;
       if (av > bv) return sort.dir === "asc" ? 1 : -1;
       return 0;
@@ -624,11 +625,11 @@ function RankingTable({
               <tr className="border-b border-border">
                 <Th k="name">Atendente</Th>
                 <Th k="closed" align="right">Fechados</Th>
-                <Th k="avgTimeMin" align="right">Tempo Médio</Th>
+                <Th k="avgTimeSec" align="right">Tempo Médio</Th>
                 {/* 🆕 Novas colunas de tempo (substituem a "Taxa Resolução") */}
-                <Th k="avgResponseMin" align="right">T. Resposta</Th>
-                <Th k="firstContactMin" align="right">1º Contato</Th>
-                <Th k="avgCloseMin" align="right">T. Fechamento</Th>
+                <Th k="avgResponseSec" align="right">T. Resposta</Th>
+                <Th k="firstContactSec" align="right">1º Contato</Th>
+                <Th k="avgCloseSec" align="right">T. Fechamento</Th>
               </tr>
             </thead>
             <tbody>
@@ -649,16 +650,18 @@ function RankingTable({
                   <td className="px-4 py-3 text-right text-sm font-semibold tabular-nums text-foreground">
                     {a.closed.toLocaleString("pt-BR")}
                   </td>
-                  <td className="px-4 py-3 text-right text-sm tabular-nums text-muted-foreground">{a.avgTimeMin} min</td>
-                  {/* 🆕 Novas células de tempo (em minutos) */}
+                  {/* 🆕 Todas as células de tempo agora exibem SEGUNDOS ("10m 1s") */}
                   <td className="px-4 py-3 text-right text-sm tabular-nums text-muted-foreground">
-                    {a.avgResponseMin.toFixed(1)} min
+                    {formatDuration(a.avgTimeSec)}
                   </td>
                   <td className="px-4 py-3 text-right text-sm tabular-nums text-muted-foreground">
-                    {a.firstContactMin.toFixed(1)} min
+                    {formatDuration(a.avgResponseSec)}
                   </td>
                   <td className="px-4 py-3 text-right text-sm tabular-nums text-muted-foreground">
-                    {a.avgCloseMin} min
+                    {formatDuration(a.firstContactSec)}
+                  </td>
+                  <td className="px-4 py-3 text-right text-sm tabular-nums text-muted-foreground">
+                    {formatDuration(a.avgCloseSec)}
                   </td>
                 </tr>
               ))}
@@ -688,25 +691,26 @@ function InsightsPanel({ data, loading }: { data: DashboardData | null; loading:
     const topAgent = data.agents[0];
 
     // Atendente com menor tempo médio = mais rápido.
-    const fastest = [...data.agents].sort((a, b) => a.avgTimeMin - b.avgTimeMin)[0];
+    const fastest = [...data.agents].sort((a, b) => (a.avgTimeSec ?? 0) - (b.avgTimeSec ?? 0))[0];
 
     // 🆕 Substituímos a "taxa de resolução" pelos novos tempos médios da equipe.
+    // 🆕 Médias da equipe em SEGUNDOS.
     const avgResponse =
-      data.agents.reduce((s, a) => s + a.avgResponseMin, 0) / Math.max(data.agents.length, 1);
+      data.agents.reduce((s, a) => s + (a.avgResponseSec ?? 0), 0) / Math.max(data.agents.length, 1);
     const avgFirstContact =
-      data.agents.reduce((s, a) => s + a.firstContactMin, 0) / Math.max(data.agents.length, 1);
+      data.agents.reduce((s, a) => s + (a.firstContactSec ?? 0), 0) / Math.max(data.agents.length, 1);
     const avgClose =
-      data.agents.reduce((s, a) => s + a.avgCloseMin, 0) / Math.max(data.agents.length, 1);
+      data.agents.reduce((s, a) => s + (a.avgCloseSec ?? 0), 0) / Math.max(data.agents.length, 1);
 
     return [
       { icon: Zap, tone: "primary" as const, label: "Pico de atendimentos", value: `${peak.hour} · ${peak.count} chamados` },
       { icon: Clock, tone: "info" as const, label: "Menor movimento", value: `${low.hour} · ${low.count} chamados` },
       { icon: Trophy, tone: "success" as const, label: "Maior produtividade", value: `${topAgent.name} · ${topAgent.closed}` },
-      { icon: Activity, tone: "warning" as const, label: "Menor tempo médio", value: `${fastest.name} · ${fastest.avgTimeMin} min` },
-      // 🆕 Insights de tempo da equipe
-      { icon: MessageSquare, tone: "info" as const, label: "T. médio de resposta", value: `${avgResponse.toFixed(1)} min` },
-      { icon: Timer, tone: "primary" as const, label: "T. 1º contato (pós-bot)", value: `${avgFirstContact.toFixed(1)} min` },
-      { icon: CheckCircle2, tone: "success" as const, label: "T. médio de fechamento", value: `${avgClose.toFixed(0)} min` },
+      { icon: Activity, tone: "warning" as const, label: "Menor tempo médio", value: `${fastest.name} · ${formatDuration(fastest.avgTimeSec)}` },
+      // 🆕 Insights de tempo da equipe (com segundos)
+      { icon: MessageSquare, tone: "info" as const, label: "T. médio de resposta", value: formatDuration(avgResponse) },
+      { icon: Timer, tone: "primary" as const, label: "T. 1º contato (pós-bot)", value: formatDuration(avgFirstContact) },
+      { icon: CheckCircle2, tone: "success" as const, label: "T. médio de fechamento", value: formatDuration(avgClose) },
     ];
   }, [data]);
 
