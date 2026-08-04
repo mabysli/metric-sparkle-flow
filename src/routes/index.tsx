@@ -570,7 +570,22 @@ function TrendChart({ data, loading }: { data: DashboardData | null; loading: bo
 // Chaves possíveis de ordenação (nome de coluna).
 // 🆕 Substituímos `resolutionRate` pelas novas métricas de tempo.
 // 🆕 (ALTERAÇÃO) Ordenamos pelas versões em SEGUNDOS das métricas de tempo.
-type SortKey = "closed" | "avgTimeSec" | "avgResponseSec" | "firstContactSec" | "avgCloseSec" | "name";
+// 🆕 (ALTERAÇÃO DESTA REVISÃO) Novas colunas ordenáveis: total, abertos,
+// PTE, taxa de resolução, contatos e mensagens (os mesmos indicadores da
+// grade de KPIs, agora por atendente).
+type SortKey =
+  | "closed"
+  | "avgTimeSec"
+  | "avgResponseSec"
+  | "firstContactSec"
+  | "avgCloseSec"
+  | "total"
+  | "open"
+  | "pteSec"
+  | "resolutionRate"
+  | "contacts"
+  | "messages"
+  | "name";
 
 function RankingTable({
   data,
@@ -624,16 +639,24 @@ function RankingTable({
         <SkeletonChart height={320} />
       ) : (
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[520px] border-collapse">
+          <table className="w-full min-w-[1100px] border-collapse">
             <thead>
               <tr className="border-b border-border">
                 <Th k="name">Atendente</Th>
+                {/* 🆕 Volume por atendente */}
+                <Th k="total" align="right">Total</Th>
+                <Th k="open" align="right">Abertos</Th>
                 <Th k="closed" align="right">Fechados</Th>
-                <Th k="avgTimeSec" align="right">Tempo Médio</Th>
+                <Th k="avgTimeSec" align="right">TMA</Th>
                 {/* 🆕 Novas colunas de tempo (substituem a "Taxa Resolução") */}
-                <Th k="avgResponseSec" align="right">T. Resposta</Th>
-                <Th k="firstContactSec" align="right">1º Contato</Th>
+                <Th k="pteSec" align="right">PTE</Th>
+                <Th k="avgResponseSec" align="right">TME</Th>
+                <Th k="firstContactSec" align="right">Após Bot</Th>
                 <Th k="avgCloseSec" align="right">T. Fechamento</Th>
+                {/* 🆕 Qualidade e volume de conversas */}
+                <Th k="resolutionRate" align="right">Resolução</Th>
+                <Th k="contacts" align="right">Contatos</Th>
+                <Th k="messages" align="right">Mensagens</Th>
               </tr>
             </thead>
             <tbody>
@@ -651,12 +674,22 @@ function RankingTable({
                       </div>
                     </div>
                   </td>
+                  {/* 🆕 Volume */}
+                  <td className="px-4 py-3 text-right text-sm tabular-nums text-muted-foreground">
+                    {(a.total ?? 0).toLocaleString("pt-BR")}
+                  </td>
+                  <td className="px-4 py-3 text-right text-sm tabular-nums text-muted-foreground">
+                    {(a.open ?? 0).toLocaleString("pt-BR")}
+                  </td>
                   <td className="px-4 py-3 text-right text-sm font-semibold tabular-nums text-foreground">
                     {a.closed.toLocaleString("pt-BR")}
                   </td>
                   {/* 🆕 Todas as células de tempo agora exibem SEGUNDOS ("10m 1s") */}
                   <td className="px-4 py-3 text-right text-sm tabular-nums text-muted-foreground">
                     {formatDuration(a.avgTimeSec)}
+                  </td>
+                  <td className="px-4 py-3 text-right text-sm tabular-nums text-muted-foreground">
+                    {formatDuration(a.pteSec)}
                   </td>
                   <td className="px-4 py-3 text-right text-sm tabular-nums text-muted-foreground">
                     {formatDuration(a.avgResponseSec)}
@@ -666,6 +699,16 @@ function RankingTable({
                   </td>
                   <td className="px-4 py-3 text-right text-sm tabular-nums text-muted-foreground">
                     {formatDuration(a.avgCloseSec)}
+                  </td>
+                  {/* 🆕 Qualidade e volume de conversas */}
+                  <td className="px-4 py-3 text-right text-sm tabular-nums text-muted-foreground">
+                    {a.resolutionRate.toFixed(1)}%
+                  </td>
+                  <td className="px-4 py-3 text-right text-sm tabular-nums text-muted-foreground">
+                    {(a.contacts ?? 0).toLocaleString("pt-BR")}
+                  </td>
+                  <td className="px-4 py-3 text-right text-sm tabular-nums text-muted-foreground">
+                    {(a.messages ?? 0).toLocaleString("pt-BR")}
                   </td>
                 </tr>
               ))}
