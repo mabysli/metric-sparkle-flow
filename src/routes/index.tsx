@@ -50,9 +50,9 @@ import {
 } from "lucide-react"; // ícones SVG
 import { KpiCard } from "@/components/dashboard/KpiCard";
 import { ChartCard } from "@/components/dashboard/ChartCard";
-import { type DashboardData, type DateRange } from "@/lib/dashboard-data";
+import { type AgentProgressPoint, type DashboardData, type DateRange } from "@/lib/dashboard-data";
 import { formatDuration } from "@/lib/format-duration"; // 🆕 formata segundos ("10m 1s")
-import { fetchDashboard } from "@/lib/dashboard-api"; // 🔌 ponto de integração com a API
+import { fetchAgentProgress, fetchDashboard } from "@/lib/dashboard-api"; // 🔌 integração com a API
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -183,6 +183,10 @@ function DashboardPage() {
         </div>
 
         <TrendChart data={data} loading={loading} />
+
+        {/* 🆕 (ALTERAÇÃO DESTA REVISÃO) Gráfico de progresso individual:
+            escolha o atendente e acompanhe a evolução dele por data. */}
+        <AgentProgressChart data={data} range={range} />
 
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
           <RankingTable data={data} loading={loading} className="lg:col-span-2" />
