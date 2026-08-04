@@ -61,6 +61,25 @@ export interface Agent {
   avgResponseSec?: number;
   firstContactSec?: number;
   avgCloseSec?: number;
+  // 🆕 (ALTERAÇÃO DESTA REVISÃO) Indicadores da grade de KPIs replicados
+  // POR ATENDENTE, para aparecerem também no ranking:
+  total?: number;      // Total Atendido (totalTicketsCount)
+  open?: number;       // Chamados Abertos (openedTicketsCount)
+  pteSec?: number;     // PTE — Primeiro Tempo de Espera (waitingTime / total)
+  contacts?: number;   // Contatos (contactsCount)
+  messages?: number;   // Mensagens (totalMessagesCount)
+}
+
+/**
+ * 🆕 (ALTERAÇÃO DESTA REVISÃO) Um ponto da EVOLUÇÃO DIÁRIA de UM atendente.
+ * Alimenta o gráfico "Progresso do Atendente", onde o usuário escolhe o nome
+ * e acompanha os números dele dia a dia dentro do intervalo filtrado.
+ */
+export interface AgentProgressPoint {
+  date: string;        // rótulo do dia ("05/08")
+  total: number;       // chamados atendidos no dia
+  closed: number;      // chamados fechados no dia
+  avgCloseSec: number; // tempo médio de fechamento no dia (segundos)
 }
 
 /** Um ponto da curva "atendimentos por hora do dia". */
@@ -174,6 +193,7 @@ export function generateData(period: PeriodKey): DashboardData {
     const avgCloseSec = Math.round((8 + rand() * 22) * 60 + rand() * 59);
     const avgResponseSec = Math.round(60 + rand() * 600);
     const firstContactSec = Math.round(30 + rand() * 400);
+    const totalCount = Math.round(c / (0.7 + rand() * 0.3));
     return {
       name,
       closed: c,
@@ -186,6 +206,12 @@ export function generateData(period: PeriodKey): DashboardData {
       avgResponseSec,
       firstContactSec,
       avgCloseSec,
+      // 🆕 Indicadores extras por atendente (mock)
+      total: totalCount,
+      open: Math.max(0, totalCount - c),
+      pteSec: Math.round(60 + rand() * 500),
+      contacts: Math.round(c * (0.6 + rand() * 0.5)),
+      messages: Math.round(c * (5 + rand() * 8)),
     };
   }).sort((a, b) => b.closed - a.closed);
 
