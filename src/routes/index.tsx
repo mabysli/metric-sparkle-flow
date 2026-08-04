@@ -790,3 +790,118 @@ function InsightsPanel({ data, loading }: { data: DashboardData | null; loading:
     </ChartCard>
   );
 }
+
+/* ============================================================================
+ * 🆕 (ALTERAÇÃO DESTA REVISÃO) GRÁFICO "PROGRESSO DO ATENDENTE"
+ * ============================================================================
+ * Pedido: "um gráfico em que é possível colocar o nome do atendente e
+ * verificar o progresso dele ao longo de uma data".
+ *
+ * Como funciona:
+ *   1. Um <select> lista os atendentes que vieram no ranking.
+ *   2. Ao escolher um nome, chamamos `fetchAgentProgress(range, nome)`
+ *      (src/lib/dashboard-api.ts) — 🔌 é lá que fica a integração real:
+ *      uma chamada por DIA do intervalo, filtrando por `userId`.
+ *   3. Desenhamos duas linhas (atendidos e fechados) por dia e uma linha
+ *      pontilhada com o tempo médio de fechamento (em minutos, no eixo da
+ *      direita) — o tooltip mostra o valor formatado com segundos.
+ * ========================================================================== */
+
+function AgentProgressChart({ data, range }: { data: DashboardData | null; range: DateRange }) {
+  const names = useMemo(() => (data?.agents ?? []).map((a) => a.name), [data]);
+  const [selected, setSelected] = useState<string>("");
+  const [points, setPoints] = useState<AgentProgressPoint[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Seleciona automaticamente o primeiro atendente assim que a lista chega.
+  useEffect(() => {
+    if (!selected && names.length) setSelected(names[0]);
+  }, [names, selected]);
+
+  // Busca a série do atendente escolhido sempre que o nome ou o filtro mudam.
+  useEffect(() => {
+    if (!selected) return;
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+    fetchAgentProgress(range, selected)
+      .then((p) => !cancelled && setPoints(p))
+      .catch((err) => !cancelled && setError(err instanceof Error ? err.message : "Erro desconhecido"))
+      .finally(() => !cancelled && setLoading(false));
+    return () => {
+      cancelled = true;
+    };
+  }, [selected, range.from, range.to, range.fromTime, range.toTime]);
+
+  // Recharts não formata segundos sozinho — convertemos para minutos no eixo
+  // e guardamos o valor original para o tooltip.
+  const chartData = useMemo(
+    () => points.map((p) => ({ ...p, avgCloseMin: Math.round((p.avgCloseSec / 60) * 10) / 10 })),
+    [points],
+  );
+
+  return (
+    <ChartCard
+      title="Progresso do Atendente"
+      subtitle="Escolha um atendente e veja a evolução dele dia a dia no período filtrado"
+      action={
+        <select
+          value={selected}
+          onChange={(e) => setSelected(e.target.value)}
+          className="h-8 rounded-lg border border-border bg-card px-2 text-xs font-medium text-foreground shadow-sm"
+          aria-label="Selecionar atendente"
+        >
+          {names.length === 0 && <option value="">Carregando…</option>}
+          {names.map((n) => (
+            <option key={n} value={n}>
+              {n}
+            </option>
+          ))}
+        </select>
+      }
+    >
+      {error && <p className="mb-3 text-xs text-destructive">{error}</p>}
+      {loading || !chartData.length ? (
+        <SkeletonChart height={300} />
+      ) : (
+        <ResponsiveContainer width="100%" height={300}>
+          <LineChart data={chartData} margin={{ top: 10, right: 16, left: -8, bottom: 0 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" vertical={false} />
+            <XAxis dataKey="date" stroke="var(--color-muted-foreground)" fontSize={11} tickLine={false} axisLine={false} />
+            <YAxis yAxisId="left" stroke="var(--color-muted-foreground)" fontSize={11} tickLine={false} axisLine={false} />
+            <YAxis
+              yAxisId="right"
+              orientation="right"
+              stroke="var(--color-muted-foreground)"
+              fontSize={11}
+              tickLine={false}
+              axisLine={false}
+              unit="m"
+            />
+            <Tooltip
+              contentStyle={TOOLTIP_STYLE}
+              cursor={{ stroke: "var(--color-border)" }}
+              formatter={(value: number, name: string) =>
+                name === "T. médio de fechamento" ? formatDuration(value * 60) : value
+              }
+            />
+            <Legend wrapperStyle={{ fontSize: 12 }} iconType="circle" />
+            <Line yAxisId="left" type="monotone" dataKey="total" name="Atendidos" stroke="oklch(0.55 0.2 260)" strokeWidth={2.5} dot={{ r: 2 }} />
+            <Line yAxisId="left" type="monotone" dataKey="closed" name="Fechados" stroke="oklch(0.65 0.17 155)" strokeWidth={2.5} dot={{ r: 2 }} />
+            <Line
+              yAxisId="right"
+              type="monotone"
+              dataKey="avgCloseMin"
+              name="T. médio de fechamento"
+              stroke="oklch(0.78 0.15 75)"
+              strokeWidth={2}
+              strokeDasharray="4 4"
+              dot={false}
+            />
+          </LineChart>
+        </ResponsiveContainer>
+      )}
+    </ChartCard>
+  );
+}
