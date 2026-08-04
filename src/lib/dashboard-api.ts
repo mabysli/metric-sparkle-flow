@@ -81,6 +81,7 @@ import {
   type DateRange,
   type PeriodKey,
   type Agent,
+  type AgentProgressPoint,
   type HourlyPoint,
   type TrendPoint,
   generateData,
@@ -375,6 +376,13 @@ async function fetchAgentsRanking(
           avgResponseSec,
           firstContactSec,
           avgCloseSec,
+          // 🆕 (ALTERAÇÃO DESTA REVISÃO) Indicadores da grade de KPIs agora
+          //    também POR ATENDENTE, para aparecerem no ranking:
+          total: totalCount,                                   // ← totalTicketsCount
+          open: t.openedTicketsCount || 0,                     // ← openedTicketsCount
+          pteSec: totalCount ? Math.round(t.waitingTime / totalCount) : 0, // ← waitingTime médio
+          contacts: t.contactsCount || 0,                      // ← contactsCount
+          messages: t.totalMessagesCount || 0,                 // ← totalMessagesCount
         } satisfies Agent;
       } catch {
         // Se um atendente falhar (ex.: sem tickets no período), não derruba o dashboard inteiro.
