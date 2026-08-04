@@ -81,6 +81,7 @@ import {
   type DateRange,
   type PeriodKey,
   type Agent,
+  type AgentProgressPoint,
   type HourlyPoint,
   type TrendPoint,
   generateData,
@@ -375,6 +376,13 @@ async function fetchAgentsRanking(
           avgResponseSec,
           firstContactSec,
           avgCloseSec,
+          // 🆕 (ALTERAÇÃO DESTA REVISÃO) Indicadores da grade de KPIs agora
+          //    também POR ATENDENTE, para aparecerem no ranking:
+          total: totalCount,                                   // ← totalTicketsCount
+          open: t.openedTicketsCount || 0,                     // ← openedTicketsCount
+          pteSec: totalCount ? Math.round(t.waitingTime / totalCount) : 0, // ← waitingTime médio
+          contacts: t.contactsCount || 0,                      // ← contactsCount
+          messages: t.totalMessagesCount || 0,                 // ← totalMessagesCount
         } satisfies Agent;
       } catch {
         // Se um atendente falhar (ex.: sem tickets no período), não derruba o dashboard inteiro.
@@ -491,4 +499,65 @@ export async function fetchDashboard(range: DateRange, filters?: DashboardFilter
     agents,
     trend,
   };
+}
+
+/* ============================================================================
+ * 🆕 (ALTERAÇÃO DESTA REVISÃO) PROGRESSO DE UM ATENDENTE AO LONGO DOS DIAS
+ * ============================================================================
+ * Usada pelo novo gráfico "Progresso do Atendente" (src/routes/index.tsx),
+ * onde o usuário escolhe o NOME do atendente e vê a evolução dele dia a dia
+ * dentro do intervalo filtrado no calendário.
+ *
+ * 🔌 INTEGRAÇÃO: fazemos UMA chamada a `/dashboard/general` por DIA do
+ * período, filtrando por `userId` do atendente escolhido (a API não devolve
+ * série temporal por atendente em uma única chamada). Se um dia
+ * `grouping=day` + `userId` passar a devolver um array, dá para trocar o
+ * laço abaixo por uma única chamada — o formato de saída continua o mesmo.
+ */
+export async function fetchAgentProgress(
+  range: DateRange,
+  agentName: string,
+  filters?: DashboardFilters
+): Promise<AgentProgressPoint[]> {
+  const { startPeriod, endPeriod } = getRangeAsISO(range);
+  const days = eachDayInRange(startPeriod, endPeriod);
+  const label = (iso: string) => {
+    const d = new Date(iso);
+    return `${String(d.getUTCDate()).padStart(2, "0")}/${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+  };
+
+  // 🧪 MODO MOCK — série pseudo-aleatória só para a tela ter o que mostrar.
+  if (USE_MOCK) {
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    return days.map((d, i) => {
+      const total = 8 + ((i * 7 + agentName.length) % 12);
+      return {
+        date: label(d.start),
+        total,
+        closed: Math.max(0, total - (i % 3)),
+        avgCloseSec: 600 + ((i * 137) % 1800),
+      };
+    });
+  }
+
+  const agent = AGENTS.find((a) => a.name === agentName);
+  if (!agent) return [];
+
+  const results = await Promise.all(
+    days.map(async (d) => {
+      try {
+        const t = await fetchTotals(d.start, d.end, { ...filters, userId: agent.id });
+        const closed = t.closedTicketsCount || 0;
+        return {
+          date: label(d.start),
+          total: t.totalTicketsCount || 0,
+          closed,
+          avgCloseSec: closed ? Math.round(t.ticketTime / closed) : 0,
+        } satisfies AgentProgressPoint;
+      } catch {
+        return { date: label(d.start), total: 0, closed: 0, avgCloseSec: 0 };
+      }
+    })
+  );
+  return results;
 }

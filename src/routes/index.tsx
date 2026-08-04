@@ -50,9 +50,9 @@ import {
 } from "lucide-react"; // ícones SVG
 import { KpiCard } from "@/components/dashboard/KpiCard";
 import { ChartCard } from "@/components/dashboard/ChartCard";
-import { type DashboardData, type DateRange } from "@/lib/dashboard-data";
+import { type AgentProgressPoint, type DashboardData, type DateRange } from "@/lib/dashboard-data";
 import { formatDuration } from "@/lib/format-duration"; // 🆕 formata segundos ("10m 1s")
-import { fetchDashboard } from "@/lib/dashboard-api"; // 🔌 ponto de integração com a API
+import { fetchAgentProgress, fetchDashboard } from "@/lib/dashboard-api"; // 🔌 integração com a API
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -183,6 +183,10 @@ function DashboardPage() {
         </div>
 
         <TrendChart data={data} loading={loading} />
+
+        {/* 🆕 (ALTERAÇÃO DESTA REVISÃO) Gráfico de progresso individual:
+            escolha o atendente e acompanhe a evolução dele por data. */}
+        <AgentProgressChart data={data} range={range} />
 
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
           <RankingTable data={data} loading={loading} className="lg:col-span-2" />
@@ -566,7 +570,22 @@ function TrendChart({ data, loading }: { data: DashboardData | null; loading: bo
 // Chaves possíveis de ordenação (nome de coluna).
 // 🆕 Substituímos `resolutionRate` pelas novas métricas de tempo.
 // 🆕 (ALTERAÇÃO) Ordenamos pelas versões em SEGUNDOS das métricas de tempo.
-type SortKey = "closed" | "avgTimeSec" | "avgResponseSec" | "firstContactSec" | "avgCloseSec" | "name";
+// 🆕 (ALTERAÇÃO DESTA REVISÃO) Novas colunas ordenáveis: total, abertos,
+// PTE, taxa de resolução, contatos e mensagens (os mesmos indicadores da
+// grade de KPIs, agora por atendente).
+type SortKey =
+  | "closed"
+  | "avgTimeSec"
+  | "avgResponseSec"
+  | "firstContactSec"
+  | "avgCloseSec"
+  | "total"
+  | "open"
+  | "pteSec"
+  | "resolutionRate"
+  | "contacts"
+  | "messages"
+  | "name";
 
 function RankingTable({
   data,
@@ -620,16 +639,24 @@ function RankingTable({
         <SkeletonChart height={320} />
       ) : (
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[520px] border-collapse">
+          <table className="w-full min-w-[1100px] border-collapse">
             <thead>
               <tr className="border-b border-border">
                 <Th k="name">Atendente</Th>
+                {/* 🆕 Volume por atendente */}
+                <Th k="total" align="right">Total</Th>
+                <Th k="open" align="right">Abertos</Th>
                 <Th k="closed" align="right">Fechados</Th>
-                <Th k="avgTimeSec" align="right">Tempo Médio</Th>
+                <Th k="avgTimeSec" align="right">TMA</Th>
                 {/* 🆕 Novas colunas de tempo (substituem a "Taxa Resolução") */}
-                <Th k="avgResponseSec" align="right">T. Resposta</Th>
-                <Th k="firstContactSec" align="right">1º Contato</Th>
+                <Th k="pteSec" align="right">PTE</Th>
+                <Th k="avgResponseSec" align="right">TME</Th>
+                <Th k="firstContactSec" align="right">Após Bot</Th>
                 <Th k="avgCloseSec" align="right">T. Fechamento</Th>
+                {/* 🆕 Qualidade e volume de conversas */}
+                <Th k="resolutionRate" align="right">Resolução</Th>
+                <Th k="contacts" align="right">Contatos</Th>
+                <Th k="messages" align="right">Mensagens</Th>
               </tr>
             </thead>
             <tbody>
@@ -647,12 +674,22 @@ function RankingTable({
                       </div>
                     </div>
                   </td>
+                  {/* 🆕 Volume */}
+                  <td className="px-4 py-3 text-right text-sm tabular-nums text-muted-foreground">
+                    {(a.total ?? 0).toLocaleString("pt-BR")}
+                  </td>
+                  <td className="px-4 py-3 text-right text-sm tabular-nums text-muted-foreground">
+                    {(a.open ?? 0).toLocaleString("pt-BR")}
+                  </td>
                   <td className="px-4 py-3 text-right text-sm font-semibold tabular-nums text-foreground">
                     {a.closed.toLocaleString("pt-BR")}
                   </td>
                   {/* 🆕 Todas as células de tempo agora exibem SEGUNDOS ("10m 1s") */}
                   <td className="px-4 py-3 text-right text-sm tabular-nums text-muted-foreground">
                     {formatDuration(a.avgTimeSec)}
+                  </td>
+                  <td className="px-4 py-3 text-right text-sm tabular-nums text-muted-foreground">
+                    {formatDuration(a.pteSec)}
                   </td>
                   <td className="px-4 py-3 text-right text-sm tabular-nums text-muted-foreground">
                     {formatDuration(a.avgResponseSec)}
@@ -662,6 +699,16 @@ function RankingTable({
                   </td>
                   <td className="px-4 py-3 text-right text-sm tabular-nums text-muted-foreground">
                     {formatDuration(a.avgCloseSec)}
+                  </td>
+                  {/* 🆕 Qualidade e volume de conversas */}
+                  <td className="px-4 py-3 text-right text-sm tabular-nums text-muted-foreground">
+                    {a.resolutionRate.toFixed(1)}%
+                  </td>
+                  <td className="px-4 py-3 text-right text-sm tabular-nums text-muted-foreground">
+                    {(a.contacts ?? 0).toLocaleString("pt-BR")}
+                  </td>
+                  <td className="px-4 py-3 text-right text-sm tabular-nums text-muted-foreground">
+                    {(a.messages ?? 0).toLocaleString("pt-BR")}
                   </td>
                 </tr>
               ))}
@@ -739,6 +786,121 @@ function InsightsPanel({ data, loading }: { data: DashboardData | null; loading:
             </li>
           ))}
         </ul>
+      )}
+    </ChartCard>
+  );
+}
+
+/* ============================================================================
+ * 🆕 (ALTERAÇÃO DESTA REVISÃO) GRÁFICO "PROGRESSO DO ATENDENTE"
+ * ============================================================================
+ * Pedido: "um gráfico em que é possível colocar o nome do atendente e
+ * verificar o progresso dele ao longo de uma data".
+ *
+ * Como funciona:
+ *   1. Um <select> lista os atendentes que vieram no ranking.
+ *   2. Ao escolher um nome, chamamos `fetchAgentProgress(range, nome)`
+ *      (src/lib/dashboard-api.ts) — 🔌 é lá que fica a integração real:
+ *      uma chamada por DIA do intervalo, filtrando por `userId`.
+ *   3. Desenhamos duas linhas (atendidos e fechados) por dia e uma linha
+ *      pontilhada com o tempo médio de fechamento (em minutos, no eixo da
+ *      direita) — o tooltip mostra o valor formatado com segundos.
+ * ========================================================================== */
+
+function AgentProgressChart({ data, range }: { data: DashboardData | null; range: DateRange }) {
+  const names = useMemo(() => (data?.agents ?? []).map((a) => a.name), [data]);
+  const [selected, setSelected] = useState<string>("");
+  const [points, setPoints] = useState<AgentProgressPoint[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Seleciona automaticamente o primeiro atendente assim que a lista chega.
+  useEffect(() => {
+    if (!selected && names.length) setSelected(names[0]);
+  }, [names, selected]);
+
+  // Busca a série do atendente escolhido sempre que o nome ou o filtro mudam.
+  useEffect(() => {
+    if (!selected) return;
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+    fetchAgentProgress(range, selected)
+      .then((p) => !cancelled && setPoints(p))
+      .catch((err) => !cancelled && setError(err instanceof Error ? err.message : "Erro desconhecido"))
+      .finally(() => !cancelled && setLoading(false));
+    return () => {
+      cancelled = true;
+    };
+  }, [selected, range.from, range.to, range.fromTime, range.toTime]);
+
+  // Recharts não formata segundos sozinho — convertemos para minutos no eixo
+  // e guardamos o valor original para o tooltip.
+  const chartData = useMemo(
+    () => points.map((p) => ({ ...p, avgCloseMin: Math.round((p.avgCloseSec / 60) * 10) / 10 })),
+    [points],
+  );
+
+  return (
+    <ChartCard
+      title="Progresso do Atendente"
+      subtitle="Escolha um atendente e veja a evolução dele dia a dia no período filtrado"
+      action={
+        <select
+          value={selected}
+          onChange={(e) => setSelected(e.target.value)}
+          className="h-8 rounded-lg border border-border bg-card px-2 text-xs font-medium text-foreground shadow-sm"
+          aria-label="Selecionar atendente"
+        >
+          {names.length === 0 && <option value="">Carregando…</option>}
+          {names.map((n) => (
+            <option key={n} value={n}>
+              {n}
+            </option>
+          ))}
+        </select>
+      }
+    >
+      {error && <p className="mb-3 text-xs text-destructive">{error}</p>}
+      {loading || !chartData.length ? (
+        <SkeletonChart height={300} />
+      ) : (
+        <ResponsiveContainer width="100%" height={300}>
+          <LineChart data={chartData} margin={{ top: 10, right: 16, left: -8, bottom: 0 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" vertical={false} />
+            <XAxis dataKey="date" stroke="var(--color-muted-foreground)" fontSize={11} tickLine={false} axisLine={false} />
+            <YAxis yAxisId="left" stroke="var(--color-muted-foreground)" fontSize={11} tickLine={false} axisLine={false} />
+            <YAxis
+              yAxisId="right"
+              orientation="right"
+              stroke="var(--color-muted-foreground)"
+              fontSize={11}
+              tickLine={false}
+              axisLine={false}
+              unit="m"
+            />
+            <Tooltip
+              contentStyle={TOOLTIP_STYLE}
+              cursor={{ stroke: "var(--color-border)" }}
+              formatter={(value: number, name: string) =>
+                name === "T. médio de fechamento" ? formatDuration(value * 60) : value
+              }
+            />
+            <Legend wrapperStyle={{ fontSize: 12 }} iconType="circle" />
+            <Line yAxisId="left" type="monotone" dataKey="total" name="Atendidos" stroke="oklch(0.55 0.2 260)" strokeWidth={2.5} dot={{ r: 2 }} />
+            <Line yAxisId="left" type="monotone" dataKey="closed" name="Fechados" stroke="oklch(0.65 0.17 155)" strokeWidth={2.5} dot={{ r: 2 }} />
+            <Line
+              yAxisId="right"
+              type="monotone"
+              dataKey="avgCloseMin"
+              name="T. médio de fechamento"
+              stroke="oklch(0.78 0.15 75)"
+              strokeWidth={2}
+              strokeDasharray="4 4"
+              dot={false}
+            />
+          </LineChart>
+        </ResponsiveContainer>
       )}
     </ChartCard>
   );
