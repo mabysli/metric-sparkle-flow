@@ -44,13 +44,11 @@ export const DEFAULT_DEPARTMENT_ID = DEPARTMENTS[0].id; // "Fila Suporte - Digis
  */
 export const AGENTS: DigisacAgent[] = [
   { id: "296e0d4c-a546-4746-b6da-5afd9a62f2d4", name: "Manu Oliveira" },
-  { id: "2fd4d5da-6106-474e-a4ea-b97a66ad2b3c", name: "Laura Lopes" },
   { id: "ea9ff42a-0ac8-4c1b-8685-08d12296a339", name: "Leidiane Magalhães" },
   { id: "e5920e00-5fb8-4b5d-8cce-1c17b12c52f9", name: "Ana Lins" },
   { id: "0778ff09-926d-4c23-9ba4-7540c5a85e51", name: "Bruno Lima" },
   { id: "f0e4bd59-b8e4-4c41-a543-cfe6ad7f8cfe", name: "Nicolas Limão" },
   { id: "5635d5d8-0523-48c8-812d-4898ec6d87ad", name: "Caue Santos" },
-  { id: "06210cfe-ee27-4646-8f32-353cd720c6b5", name: "Bianca Miyazaki" },
   { id: "0e0dd11e-410a-49f5-8e7b-16a0869e48f0", name: "Matheus Sousa" },
   { id: "93368a02-f011-46d6-80d1-6526a4a03c24", name: "Pedro Borim" },
   { id: "b857dbaf-e950-4465-a16d-bc9b87fbcffa", name: "Marco Teodoro" },

@@ -216,7 +216,9 @@ function buildQuery(startPeriod: string, endPeriod: string, grouping: string, fi
   params.set("departmentId", filters.departmentId ?? DEFAULT_DEPARTMENT_ID);
   // 👉 "all" (literal), não vazio.
   params.set("userId", filters.userId ?? "all");
-  params.set("periodType", `${filters.periodType ?? "close"}Date`);
+  // 👉 Fixado em "closeDate" (data de fechamento) — confirmado na requisição
+  //    real enviada por você. `filters.periodType` deixou de ser usado aqui.
+  params.set("periodType", "closeDate");
   params.set("departmentParticipation", filters.departmentParticipation ?? "last");
   // 👉 "all" (literal) é o padrão real, não "last".
   params.set("userParticipation", filters.userParticipation ?? "all");
