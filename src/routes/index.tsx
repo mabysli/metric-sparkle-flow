@@ -821,17 +821,12 @@ function AgentProgressChart({ data, range }: { data: DashboardData | null; range
     };
   }, [selected, range.from, range.to, range.fromTime, range.toTime]);
 
-  // Recharts não formata segundos sozinho — convertemos para minutos no eixo
-  // e guardamos o valor original para o tooltip.
-  const chartData = useMemo(
-    () => points.map((p) => ({ ...p, avgCloseMin: Math.round((p.avgCloseSec / 60) * 10) / 10 })),
-    [points],
-  );
+  const chartData = points;
 
   return (
     <ChartCard
       title="Progresso do Atendente"
-      subtitle="Escolha um atendente e veja a evolução dele dia a dia no período filtrado"
+      subtitle="Compare o atendente com a média, o mínimo e o máximo fechado pela equipe em cada dia"
       action={
         <select
           value={selected}
@@ -857,35 +852,19 @@ function AgentProgressChart({ data, range }: { data: DashboardData | null; range
             <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" vertical={false} />
             <XAxis dataKey="date" stroke="var(--color-muted-foreground)" fontSize={11} tickLine={false} axisLine={false} />
             <YAxis yAxisId="left" stroke="var(--color-muted-foreground)" fontSize={11} tickLine={false} axisLine={false} />
-            <YAxis
-              yAxisId="right"
-              orientation="right"
-              stroke="var(--color-muted-foreground)"
-              fontSize={11}
-              tickLine={false}
-              axisLine={false}
-              unit="m"
-            />
-            <Tooltip
-              contentStyle={TOOLTIP_STYLE}
-              cursor={{ stroke: "var(--color-border)" }}
-              formatter={(value: number, name: string) =>
-                name === "T. médio de fechamento" ? formatDuration(value * 60) : value
-              }
-            />
+            <Tooltip contentStyle={TOOLTIP_STYLE} cursor={{ stroke: "var(--color-border)" }} />
             <Legend wrapperStyle={{ fontSize: 12 }} iconType="circle" />
-            <Line yAxisId="left" type="monotone" dataKey="total" name="Atendidos" stroke="oklch(0.55 0.2 260)" strokeWidth={2.5} dot={{ r: 2 }} />
-            <Line yAxisId="left" type="monotone" dataKey="closed" name="Fechados" stroke="oklch(0.65 0.17 155)" strokeWidth={2.5} dot={{ r: 2 }} />
-            <Line
-              yAxisId="right"
-              type="monotone"
-              dataKey="avgCloseMin"
-              name="T. médio de fechamento"
-              stroke="oklch(0.78 0.15 75)"
-              strokeWidth={2}
-              strokeDasharray="4 4"
-              dot={false}
-            />
+            {/* ❌ Série "Atendidos" removida (era igual a "Fechados").
+                🆕 (ALTERAÇÃO DESTA REVISÃO) Agora são 4 vetores comparáveis:
+                   1) Fechados do atendente selecionado
+                   2) Média de fechados por atendente naquele dia
+                   3) Menor quantidade fechada por um atendente no dia
+                   4) Maior quantidade fechada por um atendente no dia
+                Assim dá pra ver se ele está acima ou abaixo dos demais. */}
+            <Line yAxisId="left" type="monotone" dataKey="closed" name="Fechados (atendente)" stroke="oklch(0.65 0.17 155)" strokeWidth={3} dot={{ r: 3 }} />
+            <Line yAxisId="left" type="monotone" dataKey="teamAvgClosed" name="Média fechados / dia" stroke="oklch(0.55 0.2 260)" strokeWidth={2} strokeDasharray="5 4" dot={false} />
+            <Line yAxisId="left" type="monotone" dataKey="minClosed" name="Menor por atendente" stroke="oklch(0.7 0.18 25)" strokeWidth={1.8} strokeDasharray="2 3" dot={false} />
+            <Line yAxisId="left" type="monotone" dataKey="maxClosed" name="Maior por atendente" stroke="oklch(0.78 0.15 75)" strokeWidth={1.8} strokeDasharray="2 3" dot={false} />
           </LineChart>
         </ResponsiveContainer>
       )}
