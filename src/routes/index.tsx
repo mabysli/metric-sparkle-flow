@@ -39,7 +39,6 @@ import {
   CalendarIcon,
   CheckCircle2,
   Clock,
-  Inbox,
   MessageSquare,
   RefreshCw,
   Timer,
@@ -392,7 +391,8 @@ function KpiGrid({ data, loading }: { data: DashboardData | null; loading: boole
     //    Os KPIs de tempo chegam em SEGUNDOS e são formatados por
     //    `formatDuration` (ex.: "7h 6m", "10m 1s", "45s").
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-      <KpiCard label="Total de Chamados" value={fmt(k.total.value)} delta={k.total.delta} icon={Inbox} tone="primary" loading={loading} />
+      {/* ❌ (ALTERAÇÃO DESTA REVISÃO) KPI "Total de Chamados / Atendido" removido:
+          na prática ele sempre repetia o valor de "Chamados Fechados". */}
       <KpiCard label="Chamados Abertos" value={fmt(k.open.value)} delta={k.open.delta} icon={Activity} tone="warning" loading={loading} />
       <KpiCard label="Chamados Fechados" value={fmt(k.closed.value)} delta={k.closed.delta} icon={CheckCircle2} tone="success" loading={loading} />
       <KpiCard label="Média de Atendimentos / Dia" value={fmt(k.dailyAvg.value)} delta={k.dailyAvg.delta} icon={TrendingUp} tone="info" loading={loading} />
@@ -400,7 +400,8 @@ function KpiGrid({ data, loading }: { data: DashboardData | null; loading: boole
       {/* 🆕 Tempos (em segundos, formatados) */}
       <KpiCard label="TMA — Tempo Médio de Atendimento" value={formatDuration(k.tma.value)} delta={k.tma.delta} icon={Clock} tone="info" loading={loading} />
       <KpiCard label="PTE — Primeiro Tempo de Espera" value={formatDuration(k.pte.value)} delta={k.pte.delta} icon={Timer} tone="warning" loading={loading} />
-      <KpiCard label="TME — Tempo Médio de Espera" value={formatDuration(k.tme.value)} delta={k.tme.delta} icon={Timer} tone="primary" loading={loading} />
+      {/* ❌ (ALTERAÇÃO DESTA REVISÃO) KPI "TME — Tempo Médio de Espera" removido:
+          estava sujando a leitura dos dados (sobrepunha PTE e Espera após o Bot). */}
       <KpiCard label="Espera após o Bot" value={formatDuration(k.botWait.value)} delta={k.botWait.delta} icon={Zap} tone="info" loading={loading} />
       {/* 🆕 Qualidade e volume */}
       <KpiCard label="Taxa de Resolução" value={`${k.resolutionRate.value.toFixed(1)}%`} delta={k.resolutionRate.delta} icon={Trophy} tone="success" loading={loading} />
@@ -576,10 +577,8 @@ function TrendChart({ data, loading }: { data: DashboardData | null; loading: bo
 type SortKey =
   | "closed"
   | "avgTimeSec"
-  | "avgResponseSec"
   | "firstContactSec"
   | "avgCloseSec"
-  | "total"
   | "open"
   | "pteSec"
   | "resolutionRate"
@@ -643,14 +642,12 @@ function RankingTable({
             <thead>
               <tr className="border-b border-border">
                 <Th k="name">Atendente</Th>
-                {/* 🆕 Volume por atendente */}
-                <Th k="total" align="right">Total</Th>
+                {/* ❌ Coluna "Total" removida — sempre igual a "Fechados". */}
                 <Th k="open" align="right">Abertos</Th>
                 <Th k="closed" align="right">Fechados</Th>
                 <Th k="avgTimeSec" align="right">TMA</Th>
-                {/* 🆕 Novas colunas de tempo (substituem a "Taxa Resolução") */}
                 <Th k="pteSec" align="right">PTE</Th>
-                <Th k="avgResponseSec" align="right">TME</Th>
+                {/* ❌ Coluna "TME" removida — poluía a leitura dos tempos. */}
                 <Th k="firstContactSec" align="right">Após Bot</Th>
                 <Th k="avgCloseSec" align="right">T. Fechamento</Th>
                 {/* 🆕 Qualidade e volume de conversas */}
@@ -674,10 +671,6 @@ function RankingTable({
                       </div>
                     </div>
                   </td>
-                  {/* 🆕 Volume */}
-                  <td className="px-4 py-3 text-right text-sm tabular-nums text-muted-foreground">
-                    {(a.total ?? 0).toLocaleString("pt-BR")}
-                  </td>
                   <td className="px-4 py-3 text-right text-sm tabular-nums text-muted-foreground">
                     {(a.open ?? 0).toLocaleString("pt-BR")}
                   </td>
@@ -690,9 +683,6 @@ function RankingTable({
                   </td>
                   <td className="px-4 py-3 text-right text-sm tabular-nums text-muted-foreground">
                     {formatDuration(a.pteSec)}
-                  </td>
-                  <td className="px-4 py-3 text-right text-sm tabular-nums text-muted-foreground">
-                    {formatDuration(a.avgResponseSec)}
                   </td>
                   <td className="px-4 py-3 text-right text-sm tabular-nums text-muted-foreground">
                     {formatDuration(a.firstContactSec)}
@@ -740,10 +730,9 @@ function InsightsPanel({ data, loading }: { data: DashboardData | null; loading:
     // Atendente com menor tempo médio = mais rápido.
     const fastest = [...data.agents].sort((a, b) => (a.avgTimeSec ?? 0) - (b.avgTimeSec ?? 0))[0];
 
-    // 🆕 Substituímos a "taxa de resolução" pelos novos tempos médios da equipe.
     // 🆕 Médias da equipe em SEGUNDOS.
-    const avgResponse =
-      data.agents.reduce((s, a) => s + (a.avgResponseSec ?? 0), 0) / Math.max(data.agents.length, 1);
+    // ❌ (ALTERAÇÃO DESTA REVISÃO) O insight de TME (tempo médio de resposta)
+    //    foi removido junto com o KPI/coluna correspondentes.
     const avgFirstContact =
       data.agents.reduce((s, a) => s + (a.firstContactSec ?? 0), 0) / Math.max(data.agents.length, 1);
     const avgClose =
@@ -754,8 +743,6 @@ function InsightsPanel({ data, loading }: { data: DashboardData | null; loading:
       { icon: Clock, tone: "info" as const, label: "Menor movimento", value: `${low.hour} · ${low.count} chamados` },
       { icon: Trophy, tone: "success" as const, label: "Maior produtividade", value: `${topAgent.name} · ${topAgent.closed}` },
       { icon: Activity, tone: "warning" as const, label: "Menor tempo médio", value: `${fastest.name} · ${formatDuration(fastest.avgTimeSec)}` },
-      // 🆕 Insights de tempo da equipe (com segundos)
-      { icon: MessageSquare, tone: "info" as const, label: "T. médio de resposta", value: formatDuration(avgResponse) },
       { icon: Timer, tone: "primary" as const, label: "T. 1º contato (pós-bot)", value: formatDuration(avgFirstContact) },
       { icon: CheckCircle2, tone: "success" as const, label: "T. médio de fechamento", value: formatDuration(avgClose) },
     ];
@@ -834,17 +821,12 @@ function AgentProgressChart({ data, range }: { data: DashboardData | null; range
     };
   }, [selected, range.from, range.to, range.fromTime, range.toTime]);
 
-  // Recharts não formata segundos sozinho — convertemos para minutos no eixo
-  // e guardamos o valor original para o tooltip.
-  const chartData = useMemo(
-    () => points.map((p) => ({ ...p, avgCloseMin: Math.round((p.avgCloseSec / 60) * 10) / 10 })),
-    [points],
-  );
+  const chartData = points;
 
   return (
     <ChartCard
       title="Progresso do Atendente"
-      subtitle="Escolha um atendente e veja a evolução dele dia a dia no período filtrado"
+      subtitle="Compare o atendente com a média, o mínimo e o máximo fechado pela equipe em cada dia"
       action={
         <select
           value={selected}
@@ -870,35 +852,19 @@ function AgentProgressChart({ data, range }: { data: DashboardData | null; range
             <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" vertical={false} />
             <XAxis dataKey="date" stroke="var(--color-muted-foreground)" fontSize={11} tickLine={false} axisLine={false} />
             <YAxis yAxisId="left" stroke="var(--color-muted-foreground)" fontSize={11} tickLine={false} axisLine={false} />
-            <YAxis
-              yAxisId="right"
-              orientation="right"
-              stroke="var(--color-muted-foreground)"
-              fontSize={11}
-              tickLine={false}
-              axisLine={false}
-              unit="m"
-            />
-            <Tooltip
-              contentStyle={TOOLTIP_STYLE}
-              cursor={{ stroke: "var(--color-border)" }}
-              formatter={(value: number, name: string) =>
-                name === "T. médio de fechamento" ? formatDuration(value * 60) : value
-              }
-            />
+            <Tooltip contentStyle={TOOLTIP_STYLE} cursor={{ stroke: "var(--color-border)" }} />
             <Legend wrapperStyle={{ fontSize: 12 }} iconType="circle" />
-            <Line yAxisId="left" type="monotone" dataKey="total" name="Atendidos" stroke="oklch(0.55 0.2 260)" strokeWidth={2.5} dot={{ r: 2 }} />
-            <Line yAxisId="left" type="monotone" dataKey="closed" name="Fechados" stroke="oklch(0.65 0.17 155)" strokeWidth={2.5} dot={{ r: 2 }} />
-            <Line
-              yAxisId="right"
-              type="monotone"
-              dataKey="avgCloseMin"
-              name="T. médio de fechamento"
-              stroke="oklch(0.78 0.15 75)"
-              strokeWidth={2}
-              strokeDasharray="4 4"
-              dot={false}
-            />
+            {/* ❌ Série "Atendidos" removida (era igual a "Fechados").
+                🆕 (ALTERAÇÃO DESTA REVISÃO) Agora são 4 vetores comparáveis:
+                   1) Fechados do atendente selecionado
+                   2) Média de fechados por atendente naquele dia
+                   3) Menor quantidade fechada por um atendente no dia
+                   4) Maior quantidade fechada por um atendente no dia
+                Assim dá pra ver se ele está acima ou abaixo dos demais. */}
+            <Line yAxisId="left" type="monotone" dataKey="closed" name="Fechados (atendente)" stroke="oklch(0.65 0.17 155)" strokeWidth={3} dot={{ r: 3 }} />
+            <Line yAxisId="left" type="monotone" dataKey="teamAvgClosed" name="Média fechados / dia" stroke="oklch(0.55 0.2 260)" strokeWidth={2} strokeDasharray="5 4" dot={false} />
+            <Line yAxisId="left" type="monotone" dataKey="minClosed" name="Menor por atendente" stroke="oklch(0.7 0.18 25)" strokeWidth={1.8} strokeDasharray="2 3" dot={false} />
+            <Line yAxisId="left" type="monotone" dataKey="maxClosed" name="Maior por atendente" stroke="oklch(0.78 0.15 75)" strokeWidth={1.8} strokeDasharray="2 3" dot={false} />
           </LineChart>
         </ResponsiveContainer>
       )}

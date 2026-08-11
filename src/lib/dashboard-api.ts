@@ -232,6 +232,65 @@ function buildQuery(startPeriod: string, endPeriod: string, grouping: string, fi
 }
 
 async function apiGet<T>(path: string): Promise<T> {
+  // 🆕 (ALTERAÇÃO DESTA REVISÃO — "arrumar as requisições")
+  // Antes cada componente disparava a mesma URL várias vezes (ranking,
+  // tendência, progresso do atendente...). Agora existe um CACHE em memória
+  // por URL com validade curta: chamadas idênticas feitas no mesmo minuto
+  // reaproveitam a resposta em vez de bater na API de novo.
+  const cached = getCached<T>(path);
+  if (cached) return cached;
+  const promise = requestQueue(() => rawGet<T>(path));
+  setCached(path, promise);
+  // Se falhar, tira do cache pra permitir nova tentativa.
+  promise.catch(() => REQUEST_CACHE.delete(path));
+  return promise;
+}
+
+// --- Cache simples em memória (chave = caminho da requisição) --------------
+const CACHE_TTL_MS = 55_000; // um pouco menor que o auto-refresh de 60s
+const REQUEST_CACHE = new Map<string, { at: number; promise: Promise<unknown> }>();
+
+function getCached<T>(key: string): Promise<T> | null {
+  const hit = REQUEST_CACHE.get(key);
+  if (!hit) return null;
+  if (Date.now() - hit.at > CACHE_TTL_MS) {
+    REQUEST_CACHE.delete(key);
+    return null;
+  }
+  return hit.promise as Promise<T>;
+}
+
+function setCached(key: string, promise: Promise<unknown>) {
+  REQUEST_CACHE.set(key, { at: Date.now(), promise });
+}
+
+// --- Fila com concorrência limitada ---------------------------------------
+// A API não gosta de dezenas de chamadas simultâneas (o dashboard chegava a
+// disparar ~100 de uma vez e algumas voltavam com erro/lentidão). Aqui
+// limitamos a 6 requisições ao mesmo tempo; as demais esperam a vez.
+const MAX_CONCURRENT = 6;
+let running = 0;
+const waiting: (() => void)[] = [];
+
+function requestQueue<T>(task: () => Promise<T>): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const run = async () => {
+      running++;
+      try {
+        resolve(await task());
+      } catch (err) {
+        reject(err);
+      } finally {
+        running--;
+        waiting.shift()?.();
+      }
+    };
+    if (running < MAX_CONCURRENT) run();
+    else waiting.push(run);
+  });
+}
+
+async function rawGet<T>(path: string): Promise<T> {
   const response = await fetch(`${API_BASE_URL}${path}`, {
     method: "GET",
     headers: {
@@ -294,8 +353,10 @@ function buildKpis(current: DigisacTotals, previous: DigisacTotals | null, agent
   const total = current.totalTicketsCount;
   const open = current.openedTicketsCount;
   const closed = current.closedTicketsCount;
-  const dailyAvg = days ? Math.round(total / days) : total;
-  const prevDailyAvg = previous && days ? Math.round(previous.totalTicketsCount / days) : 0;
+  // 🆕 (ALTERAÇÃO DESTA REVISÃO) A média por dia passou a usar os CHAMADOS
+  // FECHADOS — o "Total Atendido" saiu da tela por ser sempre igual a ele.
+  const dailyAvg = days ? Math.round(closed / days) : closed;
+  const prevDailyAvg = previous && days ? Math.round(previous.closedTicketsCount / days) : 0;
   const closedPerAgent = agentsCount ? Math.round(closed / agentsCount) : 0;
 
   // Helpers de média (evitam divisão por zero).
@@ -533,11 +594,15 @@ export async function fetchAgentProgress(
     await new Promise((resolve) => setTimeout(resolve, 300));
     return days.map((d, i) => {
       const total = 8 + ((i * 7 + agentName.length) % 12);
+      const closed = Math.max(0, total - (i % 3));
       return {
         date: label(d.start),
         total,
-        closed: Math.max(0, total - (i % 3)),
+        closed,
         avgCloseSec: 600 + ((i * 137) % 1800),
+        teamAvgClosed: Math.round(closed * 0.9),
+        minClosed: Math.max(0, closed - 4),
+        maxClosed: closed + 5,
       };
     });
   }
@@ -545,20 +610,44 @@ export async function fetchAgentProgress(
   const agent = AGENTS.find((a) => a.name === agentName);
   if (!agent) return [];
 
+  // 🆕 (ALTERAÇÃO DESTA REVISÃO) Além do atendente escolhido, buscamos TODOS
+  // os atendentes em cada dia para calcular MÉDIA, MÍNIMO e MÁXIMO de
+  // chamados fechados por usuário. Assim dá pra ver se ele está acima ou
+  // abaixo dos demais. Todas as chamadas passam pela fila com concorrência
+  // limitada + cache (ver `apiGet`), então nada é pedido duas vezes.
   const results = await Promise.all(
     days.map(async (d) => {
-      try {
-        const t = await fetchTotals(d.start, d.end, { ...filters, userId: agent.id });
-        const closed = t.closedTicketsCount || 0;
-        return {
-          date: label(d.start),
-          total: t.totalTicketsCount || 0,
-          closed,
-          avgCloseSec: closed ? Math.round(t.ticketTime / closed) : 0,
-        } satisfies AgentProgressPoint;
-      } catch {
-        return { date: label(d.start), total: 0, closed: 0, avgCloseSec: 0 };
-      }
+      // Uma chamada por atendente naquele dia (a do atendente escolhido está
+      // incluída nessa mesma lista, então não repetimos requisição).
+      const perAgent = await Promise.all(
+        AGENTS.map(async (a) => {
+          try {
+            const t = await fetchTotals(d.start, d.end, { ...filters, userId: a.id });
+            return { id: a.id, closed: t.closedTicketsCount || 0, ticketTime: t.ticketTime || 0 };
+          } catch {
+            return { id: a.id, closed: 0, ticketTime: 0 };
+          }
+        })
+      );
+
+      const mine = perAgent.find((p) => p.id === agent.id);
+      const closed = mine?.closed ?? 0;
+      // Consideramos apenas quem trabalhou no dia (fechou ao menos 1) para a
+      // média/mínimo não serem "puxados para baixo" por quem estava de folga.
+      const active = perAgent.filter((p) => p.closed > 0).map((p) => p.closed);
+      const teamAvgClosed = active.length
+        ? Math.round((active.reduce((s, v) => s + v, 0) / active.length) * 10) / 10
+        : 0;
+
+      return {
+        date: label(d.start),
+        total: closed, // (legado) mantido igual a "fechados"
+        closed,
+        avgCloseSec: closed ? Math.round((mine?.ticketTime ?? 0) / closed) : 0,
+        teamAvgClosed,
+        minClosed: active.length ? Math.min(...active) : 0,
+        maxClosed: active.length ? Math.max(...active) : 0,
+      } satisfies AgentProgressPoint;
     })
   );
   return results;

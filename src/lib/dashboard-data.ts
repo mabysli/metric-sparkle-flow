@@ -77,9 +77,14 @@ export interface Agent {
  */
 export interface AgentProgressPoint {
   date: string;        // rótulo do dia ("05/08")
-  total: number;       // chamados atendidos no dia
+  total: number;       // (legado) chamados atendidos no dia — não é mais exibido
   closed: number;      // chamados fechados no dia
   avgCloseSec: number; // tempo médio de fechamento no dia (segundos)
+  // 🆕 (ALTERAÇÃO DESTA REVISÃO) Vetores de COMPARAÇÃO com a equipe, para
+  // saber se o atendente está acima ou abaixo dos demais no mesmo dia:
+  teamAvgClosed: number; // média de chamados fechados por atendente no dia
+  minClosed: number;     // menor quantidade fechada por um atendente no dia
+  maxClosed: number;     // maior quantidade fechada por um atendente no dia
 }
 
 /** Um ponto da curva "atendimentos por hora do dia". */
