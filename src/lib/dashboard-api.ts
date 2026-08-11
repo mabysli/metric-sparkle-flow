@@ -592,11 +592,15 @@ export async function fetchAgentProgress(
     await new Promise((resolve) => setTimeout(resolve, 300));
     return days.map((d, i) => {
       const total = 8 + ((i * 7 + agentName.length) % 12);
+      const closed = Math.max(0, total - (i % 3));
       return {
         date: label(d.start),
         total,
-        closed: Math.max(0, total - (i % 3)),
+        closed,
         avgCloseSec: 600 + ((i * 137) % 1800),
+        teamAvgClosed: Math.round(closed * 0.9),
+        minClosed: Math.max(0, closed - 4),
+        maxClosed: closed + 5,
       };
     });
   }
@@ -604,20 +608,44 @@ export async function fetchAgentProgress(
   const agent = AGENTS.find((a) => a.name === agentName);
   if (!agent) return [];
 
+  // 🆕 (ALTERAÇÃO DESTA REVISÃO) Além do atendente escolhido, buscamos TODOS
+  // os atendentes em cada dia para calcular MÉDIA, MÍNIMO e MÁXIMO de
+  // chamados fechados por usuário. Assim dá pra ver se ele está acima ou
+  // abaixo dos demais. Todas as chamadas passam pela fila com concorrência
+  // limitada + cache (ver `apiGet`), então nada é pedido duas vezes.
   const results = await Promise.all(
     days.map(async (d) => {
-      try {
-        const t = await fetchTotals(d.start, d.end, { ...filters, userId: agent.id });
-        const closed = t.closedTicketsCount || 0;
-        return {
-          date: label(d.start),
-          total: t.totalTicketsCount || 0,
-          closed,
-          avgCloseSec: closed ? Math.round(t.ticketTime / closed) : 0,
-        } satisfies AgentProgressPoint;
-      } catch {
-        return { date: label(d.start), total: 0, closed: 0, avgCloseSec: 0 };
-      }
+      // Uma chamada por atendente naquele dia (a do atendente escolhido está
+      // incluída nessa mesma lista, então não repetimos requisição).
+      const perAgent = await Promise.all(
+        AGENTS.map(async (a) => {
+          try {
+            const t = await fetchTotals(d.start, d.end, { ...filters, userId: a.id });
+            return { id: a.id, closed: t.closedTicketsCount || 0, ticketTime: t.ticketTime || 0 };
+          } catch {
+            return { id: a.id, closed: 0, ticketTime: 0 };
+          }
+        })
+      );
+
+      const mine = perAgent.find((p) => p.id === agent.id);
+      const closed = mine?.closed ?? 0;
+      // Consideramos apenas quem trabalhou no dia (fechou ao menos 1) para a
+      // média/mínimo não serem "puxados para baixo" por quem estava de folga.
+      const active = perAgent.filter((p) => p.closed > 0).map((p) => p.closed);
+      const teamAvgClosed = active.length
+        ? Math.round((active.reduce((s, v) => s + v, 0) / active.length) * 10) / 10
+        : 0;
+
+      return {
+        date: label(d.start),
+        total: closed, // (legado) mantido igual a "fechados"
+        closed,
+        avgCloseSec: closed ? Math.round((mine?.ticketTime ?? 0) / closed) : 0,
+        teamAvgClosed,
+        minClosed: active.length ? Math.min(...active) : 0,
+        maxClosed: active.length ? Math.max(...active) : 0,
+      } satisfies AgentProgressPoint;
     })
   );
   return results;
