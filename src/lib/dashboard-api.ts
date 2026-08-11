@@ -353,8 +353,10 @@ function buildKpis(current: DigisacTotals, previous: DigisacTotals | null, agent
   const total = current.totalTicketsCount;
   const open = current.openedTicketsCount;
   const closed = current.closedTicketsCount;
-  const dailyAvg = days ? Math.round(total / days) : total;
-  const prevDailyAvg = previous && days ? Math.round(previous.totalTicketsCount / days) : 0;
+  // 🆕 (ALTERAÇÃO DESTA REVISÃO) A média por dia passou a usar os CHAMADOS
+  // FECHADOS — o "Total Atendido" saiu da tela por ser sempre igual a ele.
+  const dailyAvg = days ? Math.round(closed / days) : closed;
+  const prevDailyAvg = previous && days ? Math.round(previous.closedTicketsCount / days) : 0;
   const closedPerAgent = agentsCount ? Math.round(closed / agentsCount) : 0;
 
   // Helpers de média (evitam divisão por zero).
