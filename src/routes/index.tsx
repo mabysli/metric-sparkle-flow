@@ -730,10 +730,9 @@ function InsightsPanel({ data, loading }: { data: DashboardData | null; loading:
     // Atendente com menor tempo médio = mais rápido.
     const fastest = [...data.agents].sort((a, b) => (a.avgTimeSec ?? 0) - (b.avgTimeSec ?? 0))[0];
 
-    // 🆕 Substituímos a "taxa de resolução" pelos novos tempos médios da equipe.
     // 🆕 Médias da equipe em SEGUNDOS.
-    const avgResponse =
-      data.agents.reduce((s, a) => s + (a.avgResponseSec ?? 0), 0) / Math.max(data.agents.length, 1);
+    // ❌ (ALTERAÇÃO DESTA REVISÃO) O insight de TME (tempo médio de resposta)
+    //    foi removido junto com o KPI/coluna correspondentes.
     const avgFirstContact =
       data.agents.reduce((s, a) => s + (a.firstContactSec ?? 0), 0) / Math.max(data.agents.length, 1);
     const avgClose =
@@ -744,8 +743,6 @@ function InsightsPanel({ data, loading }: { data: DashboardData | null; loading:
       { icon: Clock, tone: "info" as const, label: "Menor movimento", value: `${low.hour} · ${low.count} chamados` },
       { icon: Trophy, tone: "success" as const, label: "Maior produtividade", value: `${topAgent.name} · ${topAgent.closed}` },
       { icon: Activity, tone: "warning" as const, label: "Menor tempo médio", value: `${fastest.name} · ${formatDuration(fastest.avgTimeSec)}` },
-      // 🆕 Insights de tempo da equipe (com segundos)
-      { icon: MessageSquare, tone: "info" as const, label: "T. médio de resposta", value: formatDuration(avgResponse) },
       { icon: Timer, tone: "primary" as const, label: "T. 1º contato (pós-bot)", value: formatDuration(avgFirstContact) },
       { icon: CheckCircle2, tone: "success" as const, label: "T. médio de fechamento", value: formatDuration(avgClose) },
     ];
