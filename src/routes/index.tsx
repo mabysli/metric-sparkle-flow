@@ -578,10 +578,8 @@ function TrendChart({ data, loading }: { data: DashboardData | null; loading: bo
 type SortKey =
   | "closed"
   | "avgTimeSec"
-  | "avgResponseSec"
   | "firstContactSec"
   | "avgCloseSec"
-  | "total"
   | "open"
   | "pteSec"
   | "resolutionRate"
@@ -645,14 +643,12 @@ function RankingTable({
             <thead>
               <tr className="border-b border-border">
                 <Th k="name">Atendente</Th>
-                {/* 🆕 Volume por atendente */}
-                <Th k="total" align="right">Total</Th>
+                {/* ❌ Coluna "Total" removida — sempre igual a "Fechados". */}
                 <Th k="open" align="right">Abertos</Th>
                 <Th k="closed" align="right">Fechados</Th>
                 <Th k="avgTimeSec" align="right">TMA</Th>
-                {/* 🆕 Novas colunas de tempo (substituem a "Taxa Resolução") */}
                 <Th k="pteSec" align="right">PTE</Th>
-                <Th k="avgResponseSec" align="right">TME</Th>
+                {/* ❌ Coluna "TME" removida — poluía a leitura dos tempos. */}
                 <Th k="firstContactSec" align="right">Após Bot</Th>
                 <Th k="avgCloseSec" align="right">T. Fechamento</Th>
                 {/* 🆕 Qualidade e volume de conversas */}
@@ -676,10 +672,6 @@ function RankingTable({
                       </div>
                     </div>
                   </td>
-                  {/* 🆕 Volume */}
-                  <td className="px-4 py-3 text-right text-sm tabular-nums text-muted-foreground">
-                    {(a.total ?? 0).toLocaleString("pt-BR")}
-                  </td>
                   <td className="px-4 py-3 text-right text-sm tabular-nums text-muted-foreground">
                     {(a.open ?? 0).toLocaleString("pt-BR")}
                   </td>
@@ -692,9 +684,6 @@ function RankingTable({
                   </td>
                   <td className="px-4 py-3 text-right text-sm tabular-nums text-muted-foreground">
                     {formatDuration(a.pteSec)}
-                  </td>
-                  <td className="px-4 py-3 text-right text-sm tabular-nums text-muted-foreground">
-                    {formatDuration(a.avgResponseSec)}
                   </td>
                   <td className="px-4 py-3 text-right text-sm tabular-nums text-muted-foreground">
                     {formatDuration(a.firstContactSec)}
