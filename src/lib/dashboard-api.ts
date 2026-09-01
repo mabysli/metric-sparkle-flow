@@ -232,37 +232,14 @@ function buildQuery(startPeriod: string, endPeriod: string, grouping: string, fi
 }
 
 async function apiGet<T>(path: string): Promise<T> {
-  // 🆕 (ALTERAÇÃO DESTA REVISÃO — "arrumar as requisições")
-  // Antes cada componente disparava a mesma URL várias vezes (ranking,
-  // tendência, progresso do atendente...). Agora existe um CACHE em memória
-  // por URL com validade curta: chamadas idênticas feitas no mesmo minuto
-  // reaproveitam a resposta em vez de bater na API de novo.
-  const cached = getCached<T>(path);
-  if (cached) return cached;
-  const promise = requestQueue(() => rawGet<T>(path));
-  setCached(path, promise);
-  // Se falhar, tira do cache pra permitir nova tentativa.
-  promise.catch(() => REQUEST_CACHE.delete(path));
-  return promise;
+  // 🆕 (ALTERAÇÃO DESTA REVISÃO) O CACHE em memória foi REMOVIDO a pedido:
+  // toda chamada vai de fato à API, sempre com dados frescos.
+  // O que continua é apenas a FILA que limita quantas requisições saem ao
+  // mesmo tempo (ver `requestQueue` abaixo) — ela não altera o resultado,
+  // só evita disparar dezenas de chamadas simultâneas.
+  return requestQueue(() => rawGet<T>(path));
 }
 
-// --- Cache simples em memória (chave = caminho da requisição) --------------
-const CACHE_TTL_MS = 55_000; // um pouco menor que o auto-refresh de 60s
-const REQUEST_CACHE = new Map<string, { at: number; promise: Promise<unknown> }>();
-
-function getCached<T>(key: string): Promise<T> | null {
-  const hit = REQUEST_CACHE.get(key);
-  if (!hit) return null;
-  if (Date.now() - hit.at > CACHE_TTL_MS) {
-    REQUEST_CACHE.delete(key);
-    return null;
-  }
-  return hit.promise as Promise<T>;
-}
-
-function setCached(key: string, promise: Promise<unknown>) {
-  REQUEST_CACHE.set(key, { at: Date.now(), promise });
-}
 
 // --- Fila com concorrência limitada ---------------------------------------
 // A API não gosta de dezenas de chamadas simultâneas (o dashboard chegava a
