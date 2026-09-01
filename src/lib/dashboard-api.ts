@@ -591,7 +591,8 @@ export async function fetchAgentProgress(
   // os atendentes em cada dia para calcular MÉDIA, MÍNIMO e MÁXIMO de
   // chamados fechados por usuário. Assim dá pra ver se ele está acima ou
   // abaixo dos demais. Todas as chamadas passam pela fila com concorrência
-  // limitada + cache (ver `apiGet`), então nada é pedido duas vezes.
+  // limitada (ver `apiGet`) — sem cache, sempre dados frescos.
+
   const results = await Promise.all(
     days.map(async (d) => {
       // Uma chamada por atendente naquele dia (a do atendente escolhido está
