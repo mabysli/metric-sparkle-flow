@@ -779,24 +779,113 @@ function InsightsPanel({ data, loading }: { data: DashboardData | null; loading:
 }
 
 /* ============================================================================
- * 🆕 (ALTERAÇÃO DESTA REVISÃO) GRÁFICO "PROGRESSO DO ATENDENTE"
+ * 🆕 SEÇÃO "PROGRESSO DO ATENDENTE" (2º e 3º dashboards)
  * ============================================================================
- * Pedido: "um gráfico em que é possível colocar o nome do atendente e
- * verificar o progresso dele ao longo de uma data".
+ * Pedido desta revisão:
+ *   1. Criar um dashboard no MESMO estilo do 2º, porém com OUTRAS métricas
+ *      (TME, 1º tempo de resposta e tempo médio de fechamento), com uma
+ *      "label" para escolher o ATENDENTE e outra para escolher a MÉTRICA.
+ *   2. Colocar AO LADO do 2º e do 3º dashboards um resumo com:
+ *        • dias acima da média   • dias abaixo da média
+ *        • dias com o MAIOR fechamento   • dias com o MENOR fechamento
  *
- * Como funciona:
- *   1. Um <select> lista os atendentes que vieram no ranking.
- *   2. Ao escolher um nome, chamamos `fetchAgentProgress(range, nome)`
- *      (src/lib/dashboard-api.ts) — 🔌 é lá que fica a integração real:
- *      uma chamada por DIA do intervalo, filtrando por `userId`.
- *   3. Desenhamos duas linhas (atendidos e fechados) por dia e uma linha
- *      pontilhada com o tempo médio de fechamento (em minutos, no eixo da
- *      direita) — o tooltip mostra o valor formatado com segundos.
+ * Como funciona: este componente busca UMA vez a série do atendente
+ * (`fetchAgentProgress`, em src/lib/dashboard-api.ts — 🔌 integração real,
+ * uma chamada por dia/atendente) e reaproveita os mesmos pontos nos dois
+ * gráficos e no painel lateral.
  * ========================================================================== */
 
-function AgentProgressChart({ data, range }: { data: DashboardData | null; range: DateRange }) {
+/** Métricas disponíveis no seletor do 3º dashboard (todas em segundos). */
+const AGENT_METRICS = {
+  tme: { label: "TME — Tempo Médio de Espera", value: "tmeValue", avg: "tmeAvg", min: "tmeMin", max: "tmeMax" },
+  response: { label: "1º Tempo de Resposta (após o bot)", value: "responseValue", avg: "responseAvg", min: "responseMin", max: "responseMax" },
+  close: { label: "Tempo Médio de Fechamento", value: "closeValue", avg: "closeAvg", min: "closeMin", max: "closeMax" },
+} as const;
+
+type MetricKey = keyof typeof AGENT_METRICS;
+
+/** <select> padronizado usado nas "labels" de atendente e de métrica. */
+function PickerLabel({
+  label,
+  value,
+  onChange,
+  options,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  options: { value: string; label: string }[];
+}) {
+  return (
+    <label className="flex items-center gap-2 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+      {label}
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="h-8 rounded-lg border border-border bg-card px-2 text-xs font-medium normal-case tracking-normal text-foreground shadow-sm"
+      >
+        {options.length === 0 && <option value="">Carregando…</option>}
+        {options.map((o) => (
+          <option key={o.value} value={o.value}>
+            {o.label}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+/** Painel lateral com as somas de dias acima/abaixo da média e de recordes. */
+function AgentStatsPanel({ points }: { points: AgentProgressPoint[] }) {
+  const stats = useMemo(() => {
+    let above = 0;
+    let below = 0;
+    let best = 0;
+    let worst = 0;
+    for (const p of points) {
+      if (p.closed > p.teamAvgClosed) above += 1;
+      if (p.closed < p.teamAvgClosed) below += 1;
+      if (p.closed > 0 && p.closed === p.maxClosed) best += 1;
+      if (p.closed > 0 && p.closed === p.minClosed) worst += 1;
+    }
+    return [
+      { label: "Dias acima da média", value: above, tone: "success" as const, icon: TrendingUp },
+      { label: "Dias abaixo da média", value: below, tone: "warning" as const, icon: Activity },
+      { label: "Dias com maior fechamento", value: best, tone: "primary" as const, icon: Trophy },
+      { label: "Dias com menor fechamento", value: worst, tone: "info" as const, icon: Clock },
+    ];
+  }, [points]);
+
+  const TONE: Record<string, string> = {
+    primary: "bg-primary/10 text-primary",
+    success: "bg-[color:var(--success)]/10 text-[color:var(--success)]",
+    warning: "bg-[color:var(--warning)]/15 text-[color:var(--warning)]",
+    info: "bg-[color:var(--info)]/10 text-[color:var(--info)]",
+  };
+
+  return (
+    <ChartCard title="Comparação com a Equipe" subtitle="Somatório de dias no período filtrado">
+      <ul className="space-y-3">
+        {stats.map((s) => (
+          <li key={s.label} className="flex items-center gap-3 rounded-lg border border-border bg-background/40 p-3">
+            <div className={cn("grid h-9 w-9 shrink-0 place-items-center rounded-lg", TONE[s.tone])}>
+              <s.icon className="h-4 w-4" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">{s.label}</p>
+            </div>
+            <p className="text-xl font-bold tabular-nums text-foreground">{s.value}</p>
+          </li>
+        ))}
+      </ul>
+    </ChartCard>
+  );
+}
+
+function AgentProgressSection({ data, range }: { data: DashboardData | null; range: DateRange }) {
   const names = useMemo(() => (data?.agents ?? []).map((a) => a.name), [data]);
   const [selected, setSelected] = useState<string>("");
+  const [metric, setMetric] = useState<MetricKey>("tme");
   const [points, setPoints] = useState<AgentProgressPoint[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -821,53 +910,101 @@ function AgentProgressChart({ data, range }: { data: DashboardData | null; range
     };
   }, [selected, range.from, range.to, range.fromTime, range.toTime]);
 
-  const chartData = points;
+  const agentOptions = names.map((n) => ({ value: n, label: n }));
+  const metricOptions = (Object.keys(AGENT_METRICS) as MetricKey[]).map((k) => ({
+    value: k,
+    label: AGENT_METRICS[k].label,
+  }));
+  const m = AGENT_METRICS[metric];
+  const empty = loading || !points.length;
 
   return (
-    <ChartCard
-      title="Progresso do Atendente"
-      subtitle="Compare o atendente com a média, o mínimo e o máximo fechado pela equipe em cada dia"
-      action={
-        <select
-          value={selected}
-          onChange={(e) => setSelected(e.target.value)}
-          className="h-8 rounded-lg border border-border bg-card px-2 text-xs font-medium text-foreground shadow-sm"
-          aria-label="Selecionar atendente"
+    <div className="space-y-6">
+      {error && <p className="text-xs text-destructive">{error}</p>}
+
+      {/* 2º dashboard — quantidade de chamados fechados + painel lateral */}
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+        <ChartCard
+          title="Progresso do Atendente"
+          subtitle="Compare o atendente com a média, o mínimo e o máximo fechado pela equipe em cada dia"
+          action={
+            <PickerLabel label="Atendente" value={selected} onChange={setSelected} options={agentOptions} />
+          }
         >
-          {names.length === 0 && <option value="">Carregando…</option>}
-          {names.map((n) => (
-            <option key={n} value={n}>
-              {n}
-            </option>
-          ))}
-        </select>
-      }
-    >
-      {error && <p className="mb-3 text-xs text-destructive">{error}</p>}
-      {loading || !chartData.length ? (
-        <SkeletonChart height={300} />
-      ) : (
-        <ResponsiveContainer width="100%" height={300}>
-          <LineChart data={chartData} margin={{ top: 10, right: 16, left: -8, bottom: 0 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" vertical={false} />
-            <XAxis dataKey="date" stroke="var(--color-muted-foreground)" fontSize={11} tickLine={false} axisLine={false} />
-            <YAxis yAxisId="left" stroke="var(--color-muted-foreground)" fontSize={11} tickLine={false} axisLine={false} />
-            <Tooltip contentStyle={TOOLTIP_STYLE} cursor={{ stroke: "var(--color-border)" }} />
-            <Legend wrapperStyle={{ fontSize: 12 }} iconType="circle" />
-            {/* ❌ Série "Atendidos" removida (era igual a "Fechados").
-                🆕 (ALTERAÇÃO DESTA REVISÃO) Agora são 4 vetores comparáveis:
-                   1) Fechados do atendente selecionado
-                   2) Média de fechados por atendente naquele dia
-                   3) Menor quantidade fechada por um atendente no dia
-                   4) Maior quantidade fechada por um atendente no dia
-                Assim dá pra ver se ele está acima ou abaixo dos demais. */}
-            <Line yAxisId="left" type="monotone" dataKey="closed" name="Fechados (atendente)" stroke="oklch(0.65 0.17 155)" strokeWidth={3} dot={{ r: 3 }} />
-            <Line yAxisId="left" type="monotone" dataKey="teamAvgClosed" name="Média fechados / dia" stroke="oklch(0.55 0.2 260)" strokeWidth={2} strokeDasharray="5 4" dot={false} />
-            <Line yAxisId="left" type="monotone" dataKey="minClosed" name="Menor por atendente" stroke="oklch(0.7 0.18 25)" strokeWidth={1.8} strokeDasharray="2 3" dot={false} />
-            <Line yAxisId="left" type="monotone" dataKey="maxClosed" name="Maior por atendente" stroke="oklch(0.78 0.15 75)" strokeWidth={1.8} strokeDasharray="2 3" dot={false} />
-          </LineChart>
-        </ResponsiveContainer>
-      )}
-    </ChartCard>
+          {empty ? (
+            <SkeletonChart height={300} />
+          ) : (
+            <ResponsiveContainer width="100%" height={300}>
+              <LineChart data={points} margin={{ top: 10, right: 16, left: -8, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" vertical={false} />
+                <XAxis dataKey="date" stroke="var(--color-muted-foreground)" fontSize={11} tickLine={false} axisLine={false} />
+                <YAxis stroke="var(--color-muted-foreground)" fontSize={11} tickLine={false} axisLine={false} />
+                <Tooltip contentStyle={TOOLTIP_STYLE} cursor={{ stroke: "var(--color-border)" }} />
+                <Legend wrapperStyle={{ fontSize: 12 }} iconType="circle" />
+                <Line type="monotone" dataKey="closed" name="Fechados (atendente)" stroke="oklch(0.65 0.17 155)" strokeWidth={3} dot={{ r: 3 }} />
+                <Line type="monotone" dataKey="teamAvgClosed" name="Média fechados / dia" stroke="oklch(0.55 0.2 260)" strokeWidth={2} strokeDasharray="5 4" dot={false} />
+                <Line type="monotone" dataKey="minClosed" name="Menor por atendente" stroke="oklch(0.7 0.18 25)" strokeWidth={1.8} strokeDasharray="2 3" dot={false} />
+                <Line type="monotone" dataKey="maxClosed" name="Maior por atendente" stroke="oklch(0.78 0.15 75)" strokeWidth={1.8} strokeDasharray="2 3" dot={false} />
+              </LineChart>
+            </ResponsiveContainer>
+          )}
+        </ChartCard>
+
+        <AgentStatsPanel points={points} />
+      </div>
+
+      {/* 🆕 3º dashboard — mesma estrutura, porém com métricas de TEMPO
+          selecionáveis (TME, 1º tempo de resposta, tempo de fechamento). */}
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+        <ChartCard
+          title="Comparativo de Tempos do Atendente"
+          subtitle="Escolha o atendente e a métrica para comparar com a média, o mínimo e o máximo da equipe"
+          action={
+            <div className="flex flex-wrap items-center gap-3">
+              <PickerLabel label="Atendente" value={selected} onChange={setSelected} options={agentOptions} />
+              <PickerLabel
+                label="Métrica"
+                value={metric}
+                onChange={(v) => setMetric(v as MetricKey)}
+                options={metricOptions}
+              />
+            </div>
+          }
+        >
+          {empty ? (
+            <SkeletonChart height={300} />
+          ) : (
+            <ResponsiveContainer width="100%" height={300}>
+              <LineChart data={points} margin={{ top: 10, right: 16, left: 8, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" vertical={false} />
+                <XAxis dataKey="date" stroke="var(--color-muted-foreground)" fontSize={11} tickLine={false} axisLine={false} />
+                <YAxis
+                  stroke="var(--color-muted-foreground)"
+                  fontSize={11}
+                  tickLine={false}
+                  axisLine={false}
+                  width={70}
+                  tickFormatter={(v: number) => formatDuration(v)}
+                />
+                {/* Tooltip formatando os segundos como "10m 1s" */}
+                <Tooltip
+                  contentStyle={TOOLTIP_STYLE}
+                  cursor={{ stroke: "var(--color-border)" }}
+                  formatter={(v: number | string) => formatDuration(Number(v))}
+                />
+                <Legend wrapperStyle={{ fontSize: 12 }} iconType="circle" />
+                <Line type="monotone" dataKey={m.value} name={`${m.label} (atendente)`} stroke="oklch(0.65 0.17 155)" strokeWidth={3} dot={{ r: 3 }} />
+                <Line type="monotone" dataKey={m.avg} name="Média da equipe" stroke="oklch(0.55 0.2 260)" strokeWidth={2} strokeDasharray="5 4" dot={false} />
+                <Line type="monotone" dataKey={m.min} name="Menor da equipe" stroke="oklch(0.7 0.18 25)" strokeWidth={1.8} strokeDasharray="2 3" dot={false} />
+                <Line type="monotone" dataKey={m.max} name="Maior da equipe" stroke="oklch(0.78 0.15 75)" strokeWidth={1.8} strokeDasharray="2 3" dot={false} />
+              </LineChart>
+            </ResponsiveContainer>
+          )}
+        </ChartCard>
+
+        <AgentStatsPanel points={points} />
+      </div>
+    </div>
   );
 }
+
