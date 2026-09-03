@@ -80,12 +80,31 @@ export interface AgentProgressPoint {
   total: number;       // (legado) chamados atendidos no dia — não é mais exibido
   closed: number;      // chamados fechados no dia
   avgCloseSec: number; // tempo médio de fechamento no dia (segundos)
-  // 🆕 (ALTERAÇÃO DESTA REVISÃO) Vetores de COMPARAÇÃO com a equipe, para
-  // saber se o atendente está acima ou abaixo dos demais no mesmo dia:
+  // Vetores de COMPARAÇÃO com a equipe (chamados fechados):
   teamAvgClosed: number; // média de chamados fechados por atendente no dia
   minClosed: number;     // menor quantidade fechada por um atendente no dia
   maxClosed: number;     // maior quantidade fechada por um atendente no dia
+
+  // 🆕 (ALTERAÇÃO DESTA REVISÃO) Mesmos 4 vetores (atendente / média / mínimo /
+  // máximo) replicados para OUTRAS MÉTRICAS de tempo, alimentando o novo
+  // gráfico "Comparativo de Tempos do Atendente" (seletor de métrica):
+  //   • tme       → Tempo Médio de Espera (waitingTimeAvg), em segundos
+  //   • response  → 1º tempo de resposta / após o bot (waitingTimeAfterBot), em s
+  //   • close     → Tempo médio de fechamento (ticketTime / fechados), em s
+  tmeValue: number;
+  tmeAvg: number;
+  tmeMin: number;
+  tmeMax: number;
+  responseValue: number;
+  responseAvg: number;
+  responseMin: number;
+  responseMax: number;
+  closeValue: number;
+  closeAvg: number;
+  closeMin: number;
+  closeMax: number;
 }
+
 
 /** Um ponto da curva "atendimentos por hora do dia". */
 export interface HourlyPoint {
