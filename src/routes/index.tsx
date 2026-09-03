@@ -639,7 +639,29 @@ function RankingTable({
   );
 
   return (
-    <ChartCard title="Ranking de Atendentes" subtitle="Clique nas colunas para ordenar" className={className}>
+    <ChartCard
+      title="Ranking de Atendentes"
+      subtitle="Clique nas colunas para ordenar"
+      className={className}
+      // 🆕 (ALTERAÇÃO DESTA REVISÃO) Seletor de atendente em DESTAQUE.
+      action={
+        <label className="flex items-center gap-2 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+          Destacar
+          <select
+            value={highlight}
+            onChange={(e) => setHighlight(e.target.value)}
+            className="h-8 rounded-lg border border-border bg-card px-2 text-xs font-medium normal-case tracking-normal text-foreground shadow-sm"
+          >
+            <option value="">Nenhum</option>
+            {(data?.agents ?? []).map((a) => (
+              <option key={a.name} value={a.name}>
+                {a.name}
+              </option>
+            ))}
+          </select>
+        </label>
+      }
+    >
       {loading || !data ? (
         <SkeletonChart height={320} />
       ) : (
@@ -663,20 +685,42 @@ function RankingTable({
               </tr>
             </thead>
             <tbody>
-              {rows.map((a, i) => (
-                <tr key={a.name} className="border-b border-border/60 last:border-0 hover:bg-accent/40">
+              {rows.map((a, i) => {
+                const isHighlighted = highlight === a.name;
+                return (
+                <tr
+                  key={a.name}
+                  className={cn(
+                    "border-b border-border/60 last:border-0 hover:bg-accent/40",
+                    isHighlighted && "bg-primary/5",
+                  )}
+                >
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-3">
                       {/* "Avatar" feito com as iniciais do nome */}
-                      <div className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-primary/10 text-xs font-bold text-primary">
+                      <div
+                        className={cn(
+                          "grid h-8 w-8 shrink-0 place-items-center rounded-full text-xs font-bold",
+                          isHighlighted ? "bg-primary text-primary-foreground" : "bg-primary/10 text-primary",
+                        )}
+                      >
                         {a.name.split(" ").map((n) => n[0]).slice(0, 2).join("")}
                       </div>
                       <div className="min-w-0">
-                        <p className="truncate text-sm font-medium text-foreground">{a.name}</p>
+                        {/* 🆕 Nome colorido quando o atendente está em destaque */}
+                        <p
+                          className={cn(
+                            "truncate text-sm font-medium text-foreground",
+                            isHighlighted && "font-bold text-primary",
+                          )}
+                        >
+                          {a.name}
+                        </p>
                         <p className="text-[11px] text-muted-foreground">#{i + 1}</p>
                       </div>
                     </div>
                   </td>
+
                   <td className="px-4 py-3 text-right text-sm tabular-nums text-muted-foreground">
                     {(a.open ?? 0).toLocaleString("pt-BR")}
                   </td>
