@@ -183,9 +183,11 @@ function DashboardPage() {
 
         <TrendChart data={data} loading={loading} />
 
-        {/* 🆕 (ALTERAÇÃO DESTA REVISÃO) Gráfico de progresso individual:
-            escolha o atendente e acompanhe a evolução dele por data. */}
-        <AgentProgressChart data={data} range={range} />
+        {/* 🆕 (ALTERAÇÃO DESTA REVISÃO) Dois dashboards de progresso individual:
+            o 2º (chamados fechados) e o 3º (métricas de tempo), cada um com
+            um painel lateral de comparação com a equipe. */}
+        <AgentProgressSection data={data} range={range} />
+
 
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
           <RankingTable data={data} loading={loading} className="lg:col-span-2" />
