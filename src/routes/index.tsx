@@ -599,6 +599,10 @@ function RankingTable({
 }) {
   // Estado de ordenação atual: qual coluna e em qual direção (asc/desc).
   const [sort, setSort] = useState<{ key: SortKey; dir: "asc" | "desc" }>({ key: "closed", dir: "desc" });
+  // 🆕 (ALTERAÇÃO DESTA REVISÃO) Atendente em DESTAQUE: o nome dele fica
+  // colorido (e a linha realçada) para facilitar achá-lo no ranking.
+  const [highlight, setHighlight] = useState<string>("");
+
 
   // Ordena uma cópia dos atendentes conforme o estado de ordenação.
   // Sempre fazemos uma cópia (`[...]`) para não mutar o array original.
