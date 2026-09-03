@@ -751,7 +751,8 @@ function RankingTable({
                     {(a.messages ?? 0).toLocaleString("pt-BR")}
                   </td>
                 </tr>
-              ))}
+              );
+            })}
             </tbody>
           </table>
         </div>
