@@ -572,15 +572,31 @@ export async function fetchAgentProgress(
     return days.map((d, i) => {
       const total = 8 + ((i * 7 + agentName.length) % 12);
       const closed = Math.max(0, total - (i % 3));
+      const tme = 200 + ((i * 91 + agentName.length * 13) % 600);
+      const response = 120 + ((i * 57) % 500);
+      const close = 600 + ((i * 137) % 1800);
       return {
         date: label(d.start),
         total,
         closed,
-        avgCloseSec: 600 + ((i * 137) % 1800),
+        avgCloseSec: close,
         teamAvgClosed: Math.round(closed * 0.9),
         minClosed: Math.max(0, closed - 4),
         maxClosed: closed + 5,
-      };
+        // 🆕 (ALTERAÇÃO DESTA REVISÃO) métricas de tempo + comparativos
+        tmeValue: tme,
+        tmeAvg: Math.round(tme * 1.05),
+        tmeMin: Math.round(tme * 0.6),
+        tmeMax: Math.round(tme * 1.6),
+        responseValue: response,
+        responseAvg: Math.round(response * 1.1),
+        responseMin: Math.round(response * 0.5),
+        responseMax: Math.round(response * 1.8),
+        closeValue: close,
+        closeAvg: Math.round(close * 0.95),
+        closeMin: Math.round(close * 0.6),
+        closeMax: Math.round(close * 1.5),
+      } satisfies AgentProgressPoint;
     });
   }
 
@@ -588,10 +604,10 @@ export async function fetchAgentProgress(
   if (!agent) return [];
 
   // 🆕 (ALTERAÇÃO DESTA REVISÃO) Além do atendente escolhido, buscamos TODOS
-  // os atendentes em cada dia para calcular MÉDIA, MÍNIMO e MÁXIMO de
-  // chamados fechados por usuário. Assim dá pra ver se ele está acima ou
-  // abaixo dos demais. Todas as chamadas passam pela fila com concorrência
-  // limitada (ver `apiGet`) — sem cache, sempre dados frescos.
+  // os atendentes em cada dia para calcular MÉDIA, MÍNIMO e MÁXIMO — não só
+  // de chamados fechados, mas também de TME, 1º tempo de resposta e tempo
+  // médio de fechamento (usados pelo novo gráfico comparativo de tempos).
+  // Todas as chamadas passam pela fila com concorrência limitada (`apiGet`).
 
   const results = await Promise.all(
     days.map(async (d) => {
@@ -601,9 +617,18 @@ export async function fetchAgentProgress(
         AGENTS.map(async (a) => {
           try {
             const t = await fetchTotals(d.start, d.end, { ...filters, userId: a.id });
-            return { id: a.id, closed: t.closedTicketsCount || 0, ticketTime: t.ticketTime || 0 };
+            const closed = t.closedTicketsCount || 0;
+            return {
+              id: a.id,
+              closed,
+              ticketTime: t.ticketTime || 0,
+              // Métricas de tempo derivadas (em segundos):
+              tme: Math.round(t.waitingTimeAvg || 0),
+              response: closed ? Math.round((t.waitingTimeAfterBot || 0) / closed) : 0,
+              close: closed ? Math.round((t.ticketTime || 0) / closed) : 0,
+            };
           } catch {
-            return { id: a.id, closed: 0, ticketTime: 0 };
+            return { id: a.id, closed: 0, ticketTime: 0, tme: 0, response: 0, close: 0 };
           }
         })
       );
@@ -612,21 +637,50 @@ export async function fetchAgentProgress(
       const closed = mine?.closed ?? 0;
       // Consideramos apenas quem trabalhou no dia (fechou ao menos 1) para a
       // média/mínimo não serem "puxados para baixo" por quem estava de folga.
-      const active = perAgent.filter((p) => p.closed > 0).map((p) => p.closed);
+      const activeAgents = perAgent.filter((p) => p.closed > 0);
+      const active = activeAgents.map((p) => p.closed);
       const teamAvgClosed = active.length
         ? Math.round((active.reduce((s, v) => s + v, 0) / active.length) * 10) / 10
         : 0;
+
+      /** Calcula média/mín/máx de uma métrica de tempo entre os atendentes ativos. */
+      const stats = (pick: (p: (typeof perAgent)[number]) => number) => {
+        const vals = activeAgents.map(pick).filter((v) => v > 0);
+        if (!vals.length) return { avg: 0, min: 0, max: 0 };
+        return {
+          avg: Math.round(vals.reduce((s, v) => s + v, 0) / vals.length),
+          min: Math.min(...vals),
+          max: Math.max(...vals),
+        };
+      };
+      const tmeStats = stats((p) => p.tme);
+      const respStats = stats((p) => p.response);
+      const closeStats = stats((p) => p.close);
 
       return {
         date: label(d.start),
         total: closed, // (legado) mantido igual a "fechados"
         closed,
-        avgCloseSec: closed ? Math.round((mine?.ticketTime ?? 0) / closed) : 0,
+        avgCloseSec: mine?.close ?? 0,
         teamAvgClosed,
         minClosed: active.length ? Math.min(...active) : 0,
         maxClosed: active.length ? Math.max(...active) : 0,
+        // 🆕 métricas de tempo do atendente + comparativos da equipe
+        tmeValue: mine?.tme ?? 0,
+        tmeAvg: tmeStats.avg,
+        tmeMin: tmeStats.min,
+        tmeMax: tmeStats.max,
+        responseValue: mine?.response ?? 0,
+        responseAvg: respStats.avg,
+        responseMin: respStats.min,
+        responseMax: respStats.max,
+        closeValue: mine?.close ?? 0,
+        closeAvg: closeStats.avg,
+        closeMin: closeStats.min,
+        closeMax: closeStats.max,
       } satisfies AgentProgressPoint;
     })
   );
   return results;
+
 }
