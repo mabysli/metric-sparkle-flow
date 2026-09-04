@@ -86,7 +86,7 @@ import {
   type TrendPoint,
   generateData,
 } from "./dashboard-data";
-import { AGENTS, DEFAULT_DEPARTMENT_ID } from "./digisac-catalog";
+import { AGENTS, DEFAULT_DEPARTMENT_ID, DEFAULT_DEPARTMENT_IDS } from "./digisac-catalog";
 
 const USE_MOCK = false;
 
@@ -222,7 +222,12 @@ function buildQuery(startPeriod: string, endPeriod: string, grouping: string, fi
   params.set("departmentParticipation", filters.departmentParticipation ?? "last");
   // 👉 "all" (literal) é o padrão real, não "last".
   params.set("userParticipation", filters.userParticipation ?? "all");
-  params.set("status", filters.status ?? "all");
+  // 🆕 (ALTERAÇÃO DESTA REVISÃO) Status padrão passou de "all" para "closed"
+  //    (chamados FECHADOS), combinando com o `periodType = "closeDate"` acima:
+  //    ou seja, por padrão as métricas contam chamados com status fechado e
+  //    cuja DATA DE FECHAMENTO cai dentro do período filtrado. Para incluir
+  //    todos os status, passe `status: "all"` em `DashboardFilters`.
+  params.set("status", filters.status ?? "closed");
   // 👉 "serviceId" só entra na URL quando informado — na requisição real ele
   //    nem aparece quando não usado (diferente de ir vazio).
   if (filters.serviceId) {
