@@ -136,6 +136,10 @@ function DashboardPage() {
   // 🆕 Substituímos o filtro de "período pré-definido" por um INTERVALO
   //    de datas escolhido em um calendário no cabeçalho.
   const [range, setRange] = useState<DateRange>(defaultRange);
+  // 🆕 (ALTERAÇÃO DESTA REVISÃO) Filtro de DEPARTAMENTO.
+  //    "" = ambos (a API é consultada por departamento e os totais somados);
+  //    um ID = somente aquele departamento.
+  const [departmentId, setDepartmentId] = useState<string>("");
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -144,12 +148,16 @@ function DashboardPage() {
    * Função que efetivamente busca os dados. Centralizamos numa variável
    * para reutilizar no carregamento inicial, ao trocar de período e no
    * auto-refresh de 60 segundos.
+   *
+   * 🆕 Agora repassa também o departamento escolhido: quando `departmentId`
+   * está vazio, enviamos `undefined` para que o dashboard-api some TODOS
+   * os departamentos padrão (ver `DEFAULT_DEPARTMENT_IDS`).
    */
   const load = async (signal?: AbortSignal) => {
     setLoading(true);
     setError(null);
     try {
-      const fresh = await fetchDashboard(range);
+      const fresh = await fetchDashboard(range, { departmentId: departmentId || undefined });
       if (signal?.aborted) return; // evita atualizar estado de uma chamada cancelada
       setData(fresh);
     } catch (err) {
@@ -160,7 +168,8 @@ function DashboardPage() {
     }
   };
 
-  // Carrega/recarrega sempre que o usuário troca o filtro de período.
+  // Carrega/recarrega sempre que o usuário troca o filtro de período
+  // 🆕 ...ou o filtro de departamento.
   // O `AbortController` cancela requisições anteriores se o usuário
   // clicar rápido em vários períodos seguidos.
   useEffect(() => {
@@ -168,14 +177,14 @@ function DashboardPage() {
     load(controller.signal);
     return () => controller.abort();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [range.from, range.to, range.fromTime, range.toTime]);
+  }, [range.from, range.to, range.fromTime, range.toTime, departmentId]);
 
   // Atualização automática a cada 60 segundos (requisito do projeto).
   useEffect(() => {
     const id = setInterval(() => load(), AUTO_REFRESH_MS);
     return () => clearInterval(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [range.from, range.to, range.fromTime, range.toTime]);
+  }, [range.from, range.to, range.fromTime, range.toTime, departmentId]);
 
   return (
     <div className="min-h-screen bg-background">
@@ -183,6 +192,8 @@ function DashboardPage() {
         updatedAt={data?.updatedAt ?? null}
         range={range}
         onRangeChange={setRange}
+        departmentId={departmentId}
+        onDepartmentChange={setDepartmentId}
         onRefresh={() => load()}
       />
 
