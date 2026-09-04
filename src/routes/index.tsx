@@ -216,8 +216,9 @@ function DashboardPage() {
 
         {/* 🆕 (ALTERAÇÃO DESTA REVISÃO) Dois dashboards de progresso individual:
             o 2º (chamados fechados) e o 3º (métricas de tempo), cada um com
-            um painel lateral de comparação com a equipe. */}
-        <AgentProgressSection data={data} range={range} />
+            um painel lateral de comparação com a equipe.
+            🆕 Também recebem o departamento filtrado no cabeçalho. */}
+        <AgentProgressSection data={data} range={range} departmentId={departmentId} />
 
 
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
@@ -238,11 +239,17 @@ function Header({
   updatedAt,
   range,
   onRangeChange,
+  departmentId,
+  onDepartmentChange,
   onRefresh,
 }: {
   updatedAt: string | null;
   range: DateRange;
   onRangeChange: (r: DateRange) => void;
+  // 🆕 (ALTERAÇÃO DESTA REVISÃO) Filtro de departamento:
+  // "" = ambos; um ID = apenas aquele departamento.
+  departmentId: string;
+  onDepartmentChange: (id: string) => void;
   onRefresh: () => void;
 }) {
   // Estado local apenas para animar o ícone girando ao clicar em "Atualizar".
