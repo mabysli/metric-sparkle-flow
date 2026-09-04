@@ -52,6 +52,9 @@ import { ChartCard } from "@/components/dashboard/ChartCard";
 import { type AgentProgressPoint, type DashboardData, type DateRange } from "@/lib/dashboard-data";
 import { formatDuration } from "@/lib/format-duration"; // 🆕 formata segundos ("10m 1s")
 import { fetchAgentProgress, fetchDashboard } from "@/lib/dashboard-api"; // 🔌 integração com a API
+// 🆕 (ALTERAÇÃO DESTA REVISÃO) Catálogo de departamentos para montar o
+//    seletor de filtro por departamento (ver `DEPARTMENT_OPTIONS` abaixo).
+import { DEFAULT_DEPARTMENT_IDS, DEPARTMENTS } from "@/lib/digisac-catalog";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -93,6 +96,23 @@ function defaultRange(): DateRange {
   return { from: toISODate(from), to: toISODate(to), fromTime: "00:00", toTime: "23:59" };
 }
 
+/**
+ * 🆕 (ALTERAÇÃO DESTA REVISÃO) Opções do filtro de DEPARTAMENTO.
+ * "" (vazio) = "Ambos" → a API é chamada uma vez por departamento de
+ * `DEFAULT_DEPARTMENT_IDS` e os resultados são SOMADOS (ver
+ * `fetchTotals`/`mergeTotals` em src/lib/dashboard-api.ts).
+ * Qualquer outro valor = um departamento específico → só ele é consultado.
+ */
+const DEPARTMENT_OPTIONS = [
+  { value: "", label: "Ambos os departamentos" },
+  // Só entram no seletor os departamentos consultados por padrão
+  // (o "Robô" fica de fora, pois não faz parte das métricas).
+  ...DEFAULT_DEPARTMENT_IDS.map((id) => ({
+    value: id,
+    label: DEPARTMENTS.find((d) => d.id === id)?.name ?? id,
+  })),
+];
+
 /** Formata uma data ISO em pt-BR para exibir no cabeçalho. */
 function formatTime(iso: string) {
   const d = new Date(iso);
@@ -116,6 +136,10 @@ function DashboardPage() {
   // 🆕 Substituímos o filtro de "período pré-definido" por um INTERVALO
   //    de datas escolhido em um calendário no cabeçalho.
   const [range, setRange] = useState<DateRange>(defaultRange);
+  // 🆕 (ALTERAÇÃO DESTA REVISÃO) Filtro de DEPARTAMENTO.
+  //    "" = ambos (a API é consultada por departamento e os totais somados);
+  //    um ID = somente aquele departamento.
+  const [departmentId, setDepartmentId] = useState<string>("");
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -124,12 +148,16 @@ function DashboardPage() {
    * Função que efetivamente busca os dados. Centralizamos numa variável
    * para reutilizar no carregamento inicial, ao trocar de período e no
    * auto-refresh de 60 segundos.
+   *
+   * 🆕 Agora repassa também o departamento escolhido: quando `departmentId`
+   * está vazio, enviamos `undefined` para que o dashboard-api some TODOS
+   * os departamentos padrão (ver `DEFAULT_DEPARTMENT_IDS`).
    */
   const load = async (signal?: AbortSignal) => {
     setLoading(true);
     setError(null);
     try {
-      const fresh = await fetchDashboard(range);
+      const fresh = await fetchDashboard(range, { departmentId: departmentId || undefined });
       if (signal?.aborted) return; // evita atualizar estado de uma chamada cancelada
       setData(fresh);
     } catch (err) {
@@ -140,7 +168,8 @@ function DashboardPage() {
     }
   };
 
-  // Carrega/recarrega sempre que o usuário troca o filtro de período.
+  // Carrega/recarrega sempre que o usuário troca o filtro de período
+  // 🆕 ...ou o filtro de departamento.
   // O `AbortController` cancela requisições anteriores se o usuário
   // clicar rápido em vários períodos seguidos.
   useEffect(() => {
@@ -148,14 +177,14 @@ function DashboardPage() {
     load(controller.signal);
     return () => controller.abort();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [range.from, range.to, range.fromTime, range.toTime]);
+  }, [range.from, range.to, range.fromTime, range.toTime, departmentId]);
 
   // Atualização automática a cada 60 segundos (requisito do projeto).
   useEffect(() => {
     const id = setInterval(() => load(), AUTO_REFRESH_MS);
     return () => clearInterval(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [range.from, range.to, range.fromTime, range.toTime]);
+  }, [range.from, range.to, range.fromTime, range.toTime, departmentId]);
 
   return (
     <div className="min-h-screen bg-background">
@@ -163,6 +192,8 @@ function DashboardPage() {
         updatedAt={data?.updatedAt ?? null}
         range={range}
         onRangeChange={setRange}
+        departmentId={departmentId}
+        onDepartmentChange={setDepartmentId}
         onRefresh={() => load()}
       />
 
@@ -185,8 +216,9 @@ function DashboardPage() {
 
         {/* 🆕 (ALTERAÇÃO DESTA REVISÃO) Dois dashboards de progresso individual:
             o 2º (chamados fechados) e o 3º (métricas de tempo), cada um com
-            um painel lateral de comparação com a equipe. */}
-        <AgentProgressSection data={data} range={range} />
+            um painel lateral de comparação com a equipe.
+            🆕 Também recebem o departamento filtrado no cabeçalho. */}
+        <AgentProgressSection data={data} range={range} departmentId={departmentId} />
 
 
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
@@ -207,11 +239,17 @@ function Header({
   updatedAt,
   range,
   onRangeChange,
+  departmentId,
+  onDepartmentChange,
   onRefresh,
 }: {
   updatedAt: string | null;
   range: DateRange;
   onRangeChange: (r: DateRange) => void;
+  // 🆕 (ALTERAÇÃO DESTA REVISÃO) Filtro de departamento:
+  // "" = ambos; um ID = apenas aquele departamento.
+  departmentId: string;
+  onDepartmentChange: (id: string) => void;
   onRefresh: () => void;
 }) {
   // Estado local apenas para animar o ícone girando ao clicar em "Atualizar".
