@@ -26,6 +26,10 @@ export interface DigisacAgent {
 export const DEPARTMENTS: DigisacDepartment[] = [
   { id: "aa80cf14-8976-41e9-a597-538399159751", name: "Fila Suporte - Digisac" },
   { id: "67c13b3e-f547-4f24-b4cf-8544a79ef2b2", name: "Robô" },
+  // 🆕 (ALTERAÇÃO DESTA REVISÃO) Segundo departamento incluído nas consultas
+  // a pedido. ⚠️ Nome provisório — me confirme o nome real deste departamento
+  // na Digisac para eu corrigir aqui (o ID é o que importa nas requisições).
+  { id: "c320f011-4e94-4b8f-8e2f-7489d8dcc0d2", name: "Departamento c320f011 (confirmar nome)" },
 ];
 
 /**
@@ -36,6 +40,19 @@ export const DEPARTMENTS: DigisacDepartment[] = [
  * `departmentId` explicitamente em `DashboardFilters`.
  */
 export const DEFAULT_DEPARTMENT_ID = DEPARTMENTS[0].id; // "Fila Suporte - Digisac"
+
+/**
+ * 🆕 (ALTERAÇÃO DESTA REVISÃO) Departamentos consultados por padrão.
+ * Antes era só "Fila Suporte - Digisac"; agora os totais do dashboard são a
+ * SOMA destes dois departamentos (o dashboard-api faz uma chamada por
+ * departamento e junta os resultados — ver `fetchTotals`/`mergeTotals`).
+ * Para consultar um departamento específico, passe `departmentId` em
+ * `DashboardFilters` (aí só ele é usado).
+ */
+export const DEFAULT_DEPARTMENT_IDS: string[] = [
+  "aa80cf14-8976-41e9-a597-538399159751", // Fila Suporte - Digisac
+  "c320f011-4e94-4b8f-8e2f-7489d8dcc0d2", // 🆕 segundo departamento (confirmar nome)
+];
 
 /**
  * Lista real de atendentes (nome + userId) usada por `fetchAgentsRanking`
