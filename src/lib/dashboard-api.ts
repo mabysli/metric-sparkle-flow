@@ -291,18 +291,88 @@ async function rawGet<T>(path: string): Promise<T> {
   return (await response.json()) as T;
 }
 
-function fetchTotals(startPeriod: string, endPeriod: string, filters?: DashboardFilters): Promise<DigisacTotals> {
-  return apiGet<DigisacTotals>(buildQuery(startPeriod, endPeriod, "", filters));
+/**
+ * 🆕 (ALTERAÇÃO DESTA REVISÃO) Soma os totais de DOIS departamentos em um só.
+ * Como a API só aceita UM `departmentId` por chamada, fazemos uma chamada por
+ * departamento e juntamos os resultados aqui:
+ *   - Campos de CONTAGEM (tickets, mensagens, contatos, tempos acumulados)
+ *     são SOMADOS.
+ *   - `waitingTimeAvg` já é uma MÉDIA, então não pode ser somada — fazemos
+ *     uma média PONDERADA pelo nº de tickets de cada departamento.
+ */
+function mergeTotals(a: DigisacTotals, b: DigisacTotals): DigisacTotals {
+  const sum = (x?: number, y?: number) => (x || 0) + (y || 0);
+  const ticketsA = a.totalTicketsCount || 0;
+  const ticketsB = b.totalTicketsCount || 0;
+  const tickets = ticketsA + ticketsB;
+  return {
+    sentMessagesCount: sum(a.sentMessagesCount, b.sentMessagesCount),
+    receivedMessagesCount: sum(a.receivedMessagesCount, b.receivedMessagesCount),
+    totalMessagesCount: sum(a.totalMessagesCount, b.totalMessagesCount),
+    openedTicketsCount: sum(a.openedTicketsCount, b.openedTicketsCount),
+    closedTicketsCount: sum(a.closedTicketsCount, b.closedTicketsCount),
+    totalTicketsCount: tickets,
+    waitingTime: sum(a.waitingTime, b.waitingTime),
+    waitingTimeAfterBot: sum(a.waitingTimeAfterBot, b.waitingTimeAfterBot),
+    waitingTimeAvg: tickets
+      ? Math.round(((a.waitingTimeAvg || 0) * ticketsA + (b.waitingTimeAvg || 0) * ticketsB) / tickets)
+      : 0,
+    ticketTime: sum(a.ticketTime, b.ticketTime),
+    contactsCount: sum(a.contactsCount, b.contactsCount),
+  };
+}
+
+/**
+ * 🆕 (ALTERAÇÃO DESTA REVISÃO) Por padrão consulta TODOS os departamentos
+ * de `DEFAULT_DEPARTMENT_IDS` (Fila Suporte + o novo c320f011...) e SOMA os
+ * resultados com `mergeTotals`. Se `filters.departmentId` for informado,
+ * consulta apenas aquele departamento (comportamento antigo).
+ */
+async function fetchTotals(startPeriod: string, endPeriod: string, filters?: DashboardFilters): Promise<DigisacTotals> {
+  // Departamento explícito → uma chamada só (sem soma).
+  if (filters?.departmentId) {
+    return apiGet<DigisacTotals>(buildQuery(startPeriod, endPeriod, "", filters));
+  }
+  const results = await Promise.all(
+    DEFAULT_DEPARTMENT_IDS.map((departmentId) =>
+      apiGet<DigisacTotals>(buildQuery(startPeriod, endPeriod, "", { ...filters, departmentId }))
+    )
+  );
+  return results.reduce(mergeTotals);
 }
 
 /** Tenta pedir já agrupado (day/hour). Pode devolver array OU um objeto único — tratamos os dois casos. */
-function fetchGrouped(
+async function fetchGrouped(
   startPeriod: string,
   endPeriod: string,
   grouping: "day" | "hour",
   filters?: DashboardFilters
 ): Promise<DigisacTotals | DigisacTotals[]> {
-  return apiGet<DigisacTotals | DigisacTotals[]>(buildQuery(startPeriod, endPeriod, grouping, filters));
+  // Departamento explícito → uma chamada só (sem soma).
+  if (filters?.departmentId) {
+    return apiGet<DigisacTotals | DigisacTotals[]>(buildQuery(startPeriod, endPeriod, grouping, filters));
+  }
+  // 🆕 (ALTERAÇÃO DESTA REVISÃO) Sem departamento explícito, consulta cada
+  // departamento padrão e SOMA os resultados (arrays são somados posição a
+  // posição — assume a mesma ordem de datas/horas entre os departamentos).
+  const results = await Promise.all(
+    DEFAULT_DEPARTMENT_IDS.map((departmentId) =>
+      apiGet<DigisacTotals | DigisacTotals[]>(buildQuery(startPeriod, endPeriod, grouping, { ...filters, departmentId }))
+    )
+  );
+  if (results.every(Array.isArray)) {
+    const arrays = results as DigisacTotals[][];
+    const length = Math.max(...arrays.map((a) => a.length));
+    return Array.from({ length }, (_, i) =>
+      arrays.reduce((acc, arr) => (arr[i] ? mergeTotals(acc, arr[i]) : acc), {
+        sentMessagesCount: 0, receivedMessagesCount: 0, totalMessagesCount: 0,
+        openedTicketsCount: 0, closedTicketsCount: 0, totalTicketsCount: 0,
+        waitingTime: 0, waitingTimeAfterBot: 0, waitingTimeAvg: 0,
+        ticketTime: 0, contactsCount: 0,
+      } as DigisacTotals)
+    );
+  }
+  return (results as DigisacTotals[]).reduce(mergeTotals);
 }
 
 // ---------------------------------------------------------------------------
