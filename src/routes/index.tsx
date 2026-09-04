@@ -52,6 +52,9 @@ import { ChartCard } from "@/components/dashboard/ChartCard";
 import { type AgentProgressPoint, type DashboardData, type DateRange } from "@/lib/dashboard-data";
 import { formatDuration } from "@/lib/format-duration"; // 🆕 formata segundos ("10m 1s")
 import { fetchAgentProgress, fetchDashboard } from "@/lib/dashboard-api"; // 🔌 integração com a API
+// 🆕 (ALTERAÇÃO DESTA REVISÃO) Catálogo de departamentos para montar o
+//    seletor de filtro por departamento (ver `DEPARTMENT_OPTIONS` abaixo).
+import { DEFAULT_DEPARTMENT_IDS, DEPARTMENTS } from "@/lib/digisac-catalog";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -92,6 +95,23 @@ function defaultRange(): DateRange {
   // 🆕 (ALTERAÇÃO) O intervalo agora carrega também as HORAS de início/fim.
   return { from: toISODate(from), to: toISODate(to), fromTime: "00:00", toTime: "23:59" };
 }
+
+/**
+ * 🆕 (ALTERAÇÃO DESTA REVISÃO) Opções do filtro de DEPARTAMENTO.
+ * "" (vazio) = "Ambos" → a API é chamada uma vez por departamento de
+ * `DEFAULT_DEPARTMENT_IDS` e os resultados são SOMADOS (ver
+ * `fetchTotals`/`mergeTotals` em src/lib/dashboard-api.ts).
+ * Qualquer outro valor = um departamento específico → só ele é consultado.
+ */
+const DEPARTMENT_OPTIONS = [
+  { value: "", label: "Ambos os departamentos" },
+  // Só entram no seletor os departamentos consultados por padrão
+  // (o "Robô" fica de fora, pois não faz parte das métricas).
+  ...DEFAULT_DEPARTMENT_IDS.map((id) => ({
+    value: id,
+    label: DEPARTMENTS.find((d) => d.id === id)?.name ?? id,
+  })),
+];
 
 /** Formata uma data ISO em pt-BR para exibir no cabeçalho. */
 function formatTime(iso: string) {
