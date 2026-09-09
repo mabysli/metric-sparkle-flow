@@ -971,7 +971,9 @@ function AgentStatsPanel({ points }: { points: AgentProgressPoint[] }) {
   );
 }
 
-function AgentProgressSection({ data, range }: { data: DashboardData | null; range: DateRange }) {
+// 🆕 Aceita `departmentId` (seletor do cabeçalho) e o repassa às consultas
+// de progresso — assim o gráfico por atendente respeita o departamento filtrado.
+function AgentProgressSection({ data, range, departmentId }: { data: DashboardData | null; range: DateRange; departmentId: string }) {
   const names = useMemo(() => (data?.agents ?? []).map((a) => a.name), [data]);
   const [selected, setSelected] = useState<string>("");
   const [metric, setMetric] = useState<MetricKey>("tme");
