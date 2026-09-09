@@ -365,6 +365,20 @@ function Header({
               </div>
             </PopoverContent>
           </Popover>
+          {/* 🆕 (ALTERAÇÃO) Seletor de DEPARTAMENTO: "Ambos" soma os dois
+              departamentos padrão; escolher um filtra só ele em TODAS as
+              requisições (ver `fetchTotals`/`fetchGrouped` na API). */}
+          <select
+            value={departmentId}
+            onChange={(e) => onDepartmentChange(e.target.value)}
+            className="h-8 rounded-lg border border-border bg-card px-2 text-xs font-medium text-foreground shadow-sm hover:bg-accent"
+          >
+            {DEPARTMENT_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </select>
           <button
             onClick={handleRefresh}
             className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-medium text-foreground shadow-sm transition-colors hover:bg-accent"
@@ -971,7 +985,9 @@ function AgentStatsPanel({ points }: { points: AgentProgressPoint[] }) {
   );
 }
 
-function AgentProgressSection({ data, range }: { data: DashboardData | null; range: DateRange }) {
+// 🆕 Aceita `departmentId` (seletor do cabeçalho) e o repassa às consultas
+// de progresso — assim o gráfico por atendente respeita o departamento filtrado.
+function AgentProgressSection({ data, range, departmentId }: { data: DashboardData | null; range: DateRange; departmentId: string }) {
   const names = useMemo(() => (data?.agents ?? []).map((a) => a.name), [data]);
   const [selected, setSelected] = useState<string>("");
   const [metric, setMetric] = useState<MetricKey>("tme");
@@ -990,14 +1006,14 @@ function AgentProgressSection({ data, range }: { data: DashboardData | null; ran
     let cancelled = false;
     setLoading(true);
     setError(null);
-    fetchAgentProgress(range, selected)
+    fetchAgentProgress(range, selected, { departmentId: departmentId || undefined })
       .then((p) => !cancelled && setPoints(p))
       .catch((err) => !cancelled && setError(err instanceof Error ? err.message : "Erro desconhecido"))
       .finally(() => !cancelled && setLoading(false));
     return () => {
       cancelled = true;
     };
-  }, [selected, range.from, range.to, range.fromTime, range.toTime]);
+  }, [selected, range.from, range.to, range.fromTime, range.toTime, departmentId]);
 
   const agentOptions = names.map((n) => ({ value: n, label: n }));
   const metricOptions = (Object.keys(AGENT_METRICS) as MetricKey[]).map((k) => ({

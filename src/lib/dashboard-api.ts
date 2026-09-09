@@ -189,15 +189,39 @@ function eachDayInRange(startISO: string, endISO: string): { start: string; end:
   return days;
 }
 
-function eachHourInDay(dayStartISO: string): { start: string; end: string }[] {
-  const base = startOfDayUTC(new Date(dayStartISO));
-  return Array.from({ length: 24 }, (_, h) => {
-    const s = new Date(base);
-    s.setUTCHours(h, 0, 0, 0);
-    const e = new Date(base);
-    e.setUTCHours(h, 59, 59, 999);
-    return { start: s.toISOString(), end: e.toISOString() };
-  });
+/**
+ * 🆕 (ALTERAÇÃO DESTA REVISÃO) Substituiu `eachHourInDay`.
+ * Antes o gráfico por hora SEMPRE montava as 24h do dia começando às 00:00,
+ * ignorando as horas escolhidas no filtro (`fromTime`/`toTime`) — era por
+ * isso que o "Atendimentos ao Longo do Dia" só aparecia "a partir das 10h"
+ * quando o filtro começava às 10h: as horas anteriores nem eram consultadas
+ * (ou recebiam rótulos errados pelo índice do array agrupado).
+ * Agora geramos um bloco por hora ENTRE o início e o fim REAIS do período
+ * (data + hora), então o gráfico puxa QUALQUER horário escolhido.
+ */
+function eachHourInRange(startISO: string, endISO: string): { start: string; end: string }[] {
+  const cursor = new Date(startISO);
+  cursor.setUTCMinutes(0, 0, 0); // alinha no início da hora
+  const end = new Date(endISO);
+  const hours: { start: string; end: string }[] = [];
+  while (cursor <= end) {
+    const s = new Date(cursor);
+    const e = new Date(cursor);
+    e.setUTCMinutes(59, 59, 999);
+    hours.push({ start: s.toISOString(), end: e.toISOString() });
+    cursor.setUTCHours(cursor.getUTCHours() + 1);
+  }
+  return hours;
+}
+
+/** 🆕 Rótulo do bloco de hora: "14h" num dia só; "09/09 14h" quando o período cruza dias. */
+function hourLabel(hourStartISO: string, multiDay: boolean): string {
+  const d = new Date(hourStartISO);
+  const hh = `${d.getUTCHours().toString().padStart(2, "0")}h`;
+  if (!multiDay) return hh;
+  const dd = d.getUTCDate().toString().padStart(2, "0");
+  const mm = (d.getUTCMonth() + 1).toString().padStart(2, "0");
+  return `${dd}/${mm} ${hh}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -537,29 +561,44 @@ async function fetchTrendPoints(
   return results.map((r, i) => toTrendPoint(r, i, results.length));
 }
 
+/**
+ * 🆕 (ALTERAÇÃO DESTA REVISÃO) Gráfico "Atendimentos ao Longo do Dia"
+ * reescrito para respeitar QUALQUER horário do filtro:
+ *   - ANTES: tentava `grouping=hour` e rotulava pelo ÍNDICE do array
+ *     (o 1º item virava "00h" mesmo sendo 10h → gráfico "começando às 10h"),
+ *     e no fallback sempre montava 00h–23h do dia, ignorando fromTime/toTime.
+ *   - AGORA: monta um bloco por hora entre o INÍCIO e o FIM reais do
+ *     período (`eachHourInRange`) e faz uma chamada por bloco, com o rótulo
+ *     tirado da hora REAL (`hourLabel`). Períodos longos (> 72h) caem no
+ *     `grouping=hour` como antes, para não disparar centenas de chamadas.
+ */
 async function fetchHourlyPoints(
   startPeriod: string,
   endPeriod: string,
   filters?: DashboardFilters
 ): Promise<HourlyPoint[]> {
+  const hours = eachHourInRange(startPeriod, endPeriod);
+  const multiDay = daysBetween({ from: startPeriod.slice(0, 10), to: endPeriod.slice(0, 10) }) > 1;
+
+  // Limite de segurança: até 72 blocos de hora (3 dias) → uma chamada por hora.
+  if (hours.length <= 72) {
+    const results = await Promise.all(hours.map((h) => fetchTotals(h.start, h.end, filters)));
+    return results.map((r, i) => ({ hour: hourLabel(hours[i].start, multiDay), count: r.totalTicketsCount }));
+  }
+
+  // Períodos longos: tenta o agrupamento por hora da API; se não vier array, zera.
   const grouped = await fetchGrouped(startPeriod, endPeriod, "hour", filters).catch(() => null);
   if (Array.isArray(grouped) && grouped.length) {
-    return grouped.map((g, h) => ({ hour: `${h.toString().padStart(2, "0")}h`, count: g.totalTicketsCount }));
+    return grouped.map((g, i) => ({
+      hour: hours[i] ? hourLabel(hours[i].start, true) : `${i.toString().padStart(2, "0")}h`,
+      count: g.totalTicketsCount,
+    }));
   }
-
-  const days = eachDayInRange(startPeriod, endPeriod);
-  if (days.length > 1) {
-    // Evita 24 x N chamadas em períodos longos. Fica zerado até `grouping=hour` ser confirmado.
-    if (import.meta.env.DEV) {
-      // eslint-disable-next-line no-console
-      console.warn("[Digisac] grouping=hour não devolveu array — gráfico por hora desativado para períodos > 1 dia.");
-    }
-    return Array.from({ length: 24 }, (_, h) => ({ hour: `${h.toString().padStart(2, "0")}h`, count: 0 }));
+  if (import.meta.env.DEV) {
+    // eslint-disable-next-line no-console
+    console.warn("[Digisac] grouping=hour não devolveu array — gráfico por hora desativado para períodos > 72h.");
   }
-
-  const hours = eachHourInDay(startPeriod);
-  const results = await Promise.all(hours.map((h) => fetchTotals(h.start, h.end, filters)));
-  return results.map((r, h) => ({ hour: `${h.toString().padStart(2, "0")}h`, count: r.totalTicketsCount }));
+  return hours.map((h) => ({ hour: hourLabel(h.start, true), count: 0 }));
 }
 
 // ---------------------------------------------------------------------------
