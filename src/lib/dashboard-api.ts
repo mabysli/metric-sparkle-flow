@@ -189,15 +189,39 @@ function eachDayInRange(startISO: string, endISO: string): { start: string; end:
   return days;
 }
 
-function eachHourInDay(dayStartISO: string): { start: string; end: string }[] {
-  const base = startOfDayUTC(new Date(dayStartISO));
-  return Array.from({ length: 24 }, (_, h) => {
-    const s = new Date(base);
-    s.setUTCHours(h, 0, 0, 0);
-    const e = new Date(base);
-    e.setUTCHours(h, 59, 59, 999);
-    return { start: s.toISOString(), end: e.toISOString() };
-  });
+/**
+ * 🆕 (ALTERAÇÃO DESTA REVISÃO) Substituiu `eachHourInDay`.
+ * Antes o gráfico por hora SEMPRE montava as 24h do dia começando às 00:00,
+ * ignorando as horas escolhidas no filtro (`fromTime`/`toTime`) — era por
+ * isso que o "Atendimentos ao Longo do Dia" só aparecia "a partir das 10h"
+ * quando o filtro começava às 10h: as horas anteriores nem eram consultadas
+ * (ou recebiam rótulos errados pelo índice do array agrupado).
+ * Agora geramos um bloco por hora ENTRE o início e o fim REAIS do período
+ * (data + hora), então o gráfico puxa QUALQUER horário escolhido.
+ */
+function eachHourInRange(startISO: string, endISO: string): { start: string; end: string }[] {
+  const cursor = new Date(startISO);
+  cursor.setUTCMinutes(0, 0, 0); // alinha no início da hora
+  const end = new Date(endISO);
+  const hours: { start: string; end: string }[] = [];
+  while (cursor <= end) {
+    const s = new Date(cursor);
+    const e = new Date(cursor);
+    e.setUTCMinutes(59, 59, 999);
+    hours.push({ start: s.toISOString(), end: e.toISOString() });
+    cursor.setUTCHours(cursor.getUTCHours() + 1);
+  }
+  return hours;
+}
+
+/** 🆕 Rótulo do bloco de hora: "14h" num dia só; "09/09 14h" quando o período cruza dias. */
+function hourLabel(hourStartISO: string, multiDay: boolean): string {
+  const d = new Date(hourStartISO);
+  const hh = `${d.getUTCHours().toString().padStart(2, "0")}h`;
+  if (!multiDay) return hh;
+  const dd = d.getUTCDate().toString().padStart(2, "0");
+  const mm = (d.getUTCMonth() + 1).toString().padStart(2, "0");
+  return `${dd}/${mm} ${hh}`;
 }
 
 // ---------------------------------------------------------------------------
