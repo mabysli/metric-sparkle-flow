@@ -992,14 +992,14 @@ function AgentProgressSection({ data, range, departmentId }: { data: DashboardDa
     let cancelled = false;
     setLoading(true);
     setError(null);
-    fetchAgentProgress(range, selected)
+    fetchAgentProgress(range, selected, { departmentId: departmentId || undefined })
       .then((p) => !cancelled && setPoints(p))
       .catch((err) => !cancelled && setError(err instanceof Error ? err.message : "Erro desconhecido"))
       .finally(() => !cancelled && setLoading(false));
     return () => {
       cancelled = true;
     };
-  }, [selected, range.from, range.to, range.fromTime, range.toTime]);
+  }, [selected, range.from, range.to, range.fromTime, range.toTime, departmentId]);
 
   const agentOptions = names.map((n) => ({ value: n, label: n }));
   const metricOptions = (Object.keys(AGENT_METRICS) as MetricKey[]).map((k) => ({
