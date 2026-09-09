@@ -365,6 +365,20 @@ function Header({
               </div>
             </PopoverContent>
           </Popover>
+          {/* 🆕 (ALTERAÇÃO) Seletor de DEPARTAMENTO: "Ambos" soma os dois
+              departamentos padrão; escolher um filtra só ele em TODAS as
+              requisições (ver `fetchTotals`/`fetchGrouped` na API). */}
+          <select
+            value={departmentId}
+            onChange={(e) => onDepartmentChange(e.target.value)}
+            className="h-8 rounded-lg border border-border bg-card px-2 text-xs font-medium text-foreground shadow-sm hover:bg-accent"
+          >
+            {DEPARTMENT_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </select>
           <button
             onClick={handleRefresh}
             className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-medium text-foreground shadow-sm transition-colors hover:bg-accent"
