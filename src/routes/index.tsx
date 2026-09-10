@@ -197,7 +197,10 @@ function DashboardPage() {
         onRefresh={() => load()}
       />
 
-      <main className="mx-auto max-w-[1500px] space-y-6 px-4 pb-12 pt-6 sm:px-6 lg:px-8">
+      {/* 🆕 (ALTERAÇÃO) Layout FULL-WIDTH: em vez de travar o conteúdo em uma
+          largura fixa central, usamos toda a largura da tela com uma margem
+          lateral pequena e proporcional (mais folgada só em telas grandes). */}
+      <main className="w-full space-y-6 px-3 pb-12 pt-6 sm:px-5 lg:px-8 2xl:px-10">
         {/* Estado de erro: mostra um alerta com botão para tentar de novo */}
         {error && !loading && (
           <ErrorBanner message={error} onRetry={() => load()} />
@@ -298,7 +301,8 @@ function Header({
 
   return (
     <header className="sticky top-0 z-30 border-b border-border bg-background/85 backdrop-blur-md">
-      <div className="mx-auto grid max-w-[1500px] grid-cols-[minmax(0,1fr)_auto] items-center gap-4 px-4 py-4 sm:px-6 lg:flex lg:px-8">
+      {/* 🆕 (ALTERAÇÃO) Cabeçalho também full-width, acompanhando o conteúdo. */}
+      <div className="grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-4 px-3 py-4 sm:px-5 lg:flex lg:px-8 2xl:px-10">
         {/* Bloco da esquerda: logo + título + última atualização */}
         <div className="flex min-w-0 items-center gap-3">
           <div
