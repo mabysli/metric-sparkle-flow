@@ -49,6 +49,8 @@ import {
 } from "lucide-react"; // ícones SVG
 import { KpiCard } from "@/components/dashboard/KpiCard";
 import { ChartCard } from "@/components/dashboard/ChartCard";
+// 🆕 (ALTERAÇÃO) Botão de alternância entre modo claro e modo escuro.
+import { ThemeToggle } from "@/components/dashboard/ThemeToggle";
 import { type AgentProgressPoint, type DashboardData, type DateRange } from "@/lib/dashboard-data";
 import { formatDuration } from "@/lib/format-duration"; // 🆕 formata segundos ("10m 1s")
 import { fetchAgentProgress, fetchDashboard } from "@/lib/dashboard-api"; // 🔌 integração com a API
