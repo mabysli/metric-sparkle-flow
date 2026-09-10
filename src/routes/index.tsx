@@ -449,11 +449,11 @@ function KpiGrid({ data, loading }: { data: DashboardData | null; loading: boole
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
       <KpiCard label="Chamados Fechados" value={fmt(k.closed.value)} delta={k.closed.delta} icon={CheckCircle2} tone="success" loading={loading} />
       <KpiCard label="Média de Atendimentos / Dia" value={fmt(k.dailyAvg.value)} delta={k.dailyAvg.delta} icon={TrendingUp} tone="info" loading={loading} />
-      <KpiCard label="Fechados por Atendente" value={fmt(k.closedPerAgent.value)} delta={k.closedPerAgent.delta} icon={UserCheck} tone="primary" loading={loading} />
+      <KpiCard label="Média Fechados por Atendente" value={fmt(k.closedPerAgent.value)} delta={k.closedPerAgent.delta} icon={UserCheck} tone="primary" loading={loading} />
       {/* Tempos (em segundos, formatados) */}
       <KpiCard label="TMA — Tempo Médio de Atendimento" value={formatDuration(k.tma.value)} delta={k.tma.delta} icon={Clock} tone="info" loading={loading} />
       <KpiCard label="PTE — Primeiro Tempo de Espera" value={formatDuration(k.pte.value)} delta={k.pte.delta} icon={Timer} tone="warning" loading={loading} />
-      <KpiCard label="Espera após o Bot" value={formatDuration(k.botWait.value)} delta={k.botWait.delta} icon={Zap} tone="info" loading={loading} />
+      <KpiCard label="Média Espera após o Bot" value={formatDuration(k.botWait.value)} delta={k.botWait.delta} icon={Zap} tone="info" loading={loading} />
     </div>
   );
 }
@@ -565,46 +565,6 @@ function AgentsChart({ data, loading }: { data: DashboardData | null; loading: b
             <Tooltip contentStyle={TOOLTIP_STYLE} cursor={{ fill: "var(--color-accent)" }} />
             <Bar dataKey="closed" name="Fechados" fill="oklch(0.55 0.2 260)" radius={[0, 6, 6, 0]} />
           </BarChart>
-        </ResponsiveContainer>
-      )}
-    </ChartCard>
-  );
-}
-
-/* --------------------------- Gráfico de Área ------------------------------ */
-// Tendência: compara chamados abertos vs. fechados vs. pendentes por dia.
-function TrendChart({ data, loading }: { data: DashboardData | null; loading: boolean }) {
-  return (
-    <ChartCard title="Tendência de Chamados" subtitle="Abertos, fechados e pendentes ao longo dos dias">
-      {loading || !data ? (
-        <SkeletonChart height={300} />
-      ) : (
-        <ResponsiveContainer width="100%" height={300}>
-          <AreaChart data={data.trend} margin={{ top: 10, right: 16, left: -8, bottom: 0 }}>
-            <defs>
-              {/* Um gradiente vertical por série, para dar profundidade às áreas */}
-              <linearGradient id="gAb" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="oklch(0.55 0.2 260)" stopOpacity={0.45} />
-                <stop offset="100%" stopColor="oklch(0.55 0.2 260)" stopOpacity={0} />
-              </linearGradient>
-              <linearGradient id="gFe" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="oklch(0.65 0.17 155)" stopOpacity={0.45} />
-                <stop offset="100%" stopColor="oklch(0.65 0.17 155)" stopOpacity={0} />
-              </linearGradient>
-              <linearGradient id="gPe" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="oklch(0.78 0.15 75)" stopOpacity={0.45} />
-                <stop offset="100%" stopColor="oklch(0.78 0.15 75)" stopOpacity={0} />
-              </linearGradient>
-            </defs>
-            <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" vertical={false} />
-            <XAxis dataKey="day" stroke="var(--color-muted-foreground)" fontSize={11} tickLine={false} axisLine={false} />
-            <YAxis stroke="var(--color-muted-foreground)" fontSize={11} tickLine={false} axisLine={false} />
-            <Tooltip contentStyle={TOOLTIP_STYLE} cursor={{ stroke: "var(--color-border)" }} />
-            <Legend wrapperStyle={{ fontSize: 12 }} iconType="circle" />
-            <Area type="monotone" dataKey="abertos" name="Abertos" stroke="oklch(0.55 0.2 260)" strokeWidth={2} fill="url(#gAb)" />
-            <Area type="monotone" dataKey="fechados" name="Fechados" stroke="oklch(0.65 0.17 155)" strokeWidth={2} fill="url(#gFe)" />
-            <Area type="monotone" dataKey="pendentes" name="Pendentes" stroke="oklch(0.78 0.15 75)" strokeWidth={2} fill="url(#gPe)" />
-          </AreaChart>
         </ResponsiveContainer>
       )}
     </ChartCard>

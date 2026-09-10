@@ -345,13 +345,6 @@ function mergeTotals(a: DigisacTotals, b: DigisacTotals): DigisacTotals {
     contactsCount: sum(a.contactsCount, b.contactsCount),
   };
 }
-
-/**
- * 🆕 (ALTERAÇÃO DESTA REVISÃO) Por padrão consulta TODOS os departamentos
- * de `DEFAULT_DEPARTMENT_IDS` (Fila Suporte + o novo c320f011...) e SOMA os
- * resultados com `mergeTotals`. Se `filters.departmentId` for informado,
- * consulta apenas aquele departamento (comportamento antigo).
- */
 async function fetchTotals(startPeriod: string, endPeriod: string, filters?: DashboardFilters): Promise<DigisacTotals> {
   // Departamento explícito → uma chamada só (sem soma).
   if (filters?.departmentId) {
@@ -545,22 +538,6 @@ function toTrendPoint(t: DigisacTotals, index: number, total: number): TrendPoin
   };
 }
 
-async function fetchTrendPoints(
-  startPeriod: string,
-  endPeriod: string,
-  filters?: DashboardFilters
-): Promise<TrendPoint[]> {
-  const grouped = await fetchGrouped(startPeriod, endPeriod, "day", filters).catch(() => null);
-  if (Array.isArray(grouped) && grouped.length) {
-    return grouped.map((g, i) => toTrendPoint(g, i, grouped.length));
-  }
-
-  // Fallback: uma chamada por dia dentro do período.
-  const days = eachDayInRange(startPeriod, endPeriod);
-  const results = await Promise.all(days.map((d) => fetchTotals(d.start, d.end, filters)));
-  return results.map((r, i) => toTrendPoint(r, i, results.length));
-}
-
 /**
  * 🆕 (ALTERAÇÃO DESTA REVISÃO) Gráfico "Atendimentos ao Longo do Dia"
  * reescrito para respeitar QUALQUER horário do filtro:
@@ -635,7 +612,6 @@ export async function fetchDashboard(range: DateRange, filters?: DashboardFilter
     fetchTotals(startPeriod, endPeriod, filters),
     fetchTotals(prevStart, prevEnd, filters).catch(() => null),
     fetchAgentsRanking(startPeriod, endPeriod, filters),
-    fetchTrendPoints(startPeriod, endPeriod, filters),
     fetchHourlyPoints(startPeriod, endPeriod, filters),
   ]);
 

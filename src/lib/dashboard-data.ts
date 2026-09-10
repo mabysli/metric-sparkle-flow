@@ -112,14 +112,6 @@ export interface HourlyPoint {
   count: number; // quantidade de chamados naquela hora
 }
 
-/** Um ponto da curva de tendência diária. */
-export interface TrendPoint {
-  day: string;        // rótulo do dia (ex.: "D-6", "D-5"...)
-  abertos: number;    // chamados abertos no dia
-  fechados: number;   // chamados fechados no dia
-  pendentes: number;  // chamados ainda pendentes
-}
-
 /** Um KPI: valor atual + variação (%) em relação ao período anterior. */
 export interface KpiValue {
   value: number;
@@ -147,7 +139,6 @@ export interface DashboardData {
   };
   hourly: HourlyPoint[]; // série para o gráfico "Atendimentos ao longo do dia"
   agents: Agent[];       // lista usada no gráfico de produtividade e na tabela
-  trend: TrendPoint[];   // série para o gráfico de tendência
 }
 
 // Lista fixa de nomes só para o mock parecer realista.
@@ -240,16 +231,6 @@ export function generateData(period: PeriodKey): DashboardData {
   }).sort((a, b) => b.closed - a.closed);
 
   const closedPerAgent = Math.round(closed / agents.length);
-
-  // Série temporal usada no gráfico de tendência (mínimo 7 pontos para visual).
-  const trendDays = Math.max(days, 7);
-  const trend: TrendPoint[] = Array.from({ length: trendDays }, (_, i) => {
-    const dayLabel = `D-${trendDays - 1 - i}`;
-    const abertos = Math.round(80 + rand() * 60);
-    const fechados = Math.round(abertos * (0.7 + rand() * 0.25));
-    const pendentes = Math.max(0, abertos - fechados + Math.round(rand() * 10));
-    return { day: dayLabel, abertos, fechados, pendentes };
-  });
 
   return {
     updatedAt: new Date().toISOString(),

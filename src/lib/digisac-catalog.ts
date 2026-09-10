@@ -26,10 +26,7 @@ export interface DigisacAgent {
 export const DEPARTMENTS: DigisacDepartment[] = [
   { id: "aa80cf14-8976-41e9-a597-538399159751", name: "Fila Suporte - Digisac" },
   { id: "67c13b3e-f547-4f24-b4cf-8544a79ef2b2", name: "Robô" },
-  // 🆕 (ALTERAÇÃO DESTA REVISÃO) Segundo departamento incluído nas consultas
-  // a pedido. ⚠️ Nome provisório — me confirme o nome real deste departamento
-  // na Digisac para eu corrigir aqui (o ID é o que importa nas requisições).
-  { id: "c320f011-4e94-4b8f-8e2f-7489d8dcc0d2", name: "Departamento c320f011 (confirmar nome)" },
+  { id: "c320f011-4e94-4b8f-8e2f-7489d8dcc0d2", name: "Fila Atendimento" },
 ];
 
 /**
@@ -51,7 +48,8 @@ export const DEFAULT_DEPARTMENT_ID = DEPARTMENTS[0].id; // "Fila Suporte - Digis
  */
 export const DEFAULT_DEPARTMENT_IDS: string[] = [
   "aa80cf14-8976-41e9-a597-538399159751", // Fila Suporte - Digisac
-  "c320f011-4e94-4b8f-8e2f-7489d8dcc0d2", // 🆕 segundo departamento (confirmar nome)
+  "67c13b3e-f547-4f24-b4cf-8544a79ef2b2", // fila robo
+  "c320f011-4e94-4b8f-8e2f-7489d8dcc0d2", // Fila atendimento
 ];
 
 /**
@@ -72,6 +70,8 @@ export const AGENTS: DigisacAgent[] = [
   { id: "2e7d7458-a5e5-4160-8cbf-854e440b603a", name: "Fabiano Soares" },
   { id: "f92bb80c-0fe9-4283-ac4b-cfb8eb9208d8", name: "Eduardo Martins" },
   { id: "447992bc-8464-47a0-a74f-d4a90313b3c8", name: "Luiz Florindo" },
+  { id: "d894bdad-b0a0-4ed1-9ef2-b8f2c400b7cf", name: "Henry Porfirio" }
+  { id: "0a6c4aab-a1af-4131-81c1-dbb11727efed", name: "Agatha Otaviano" }
 ];
 
 /** Busca rápida de nome do atendente a partir do userId (com fallback). */
