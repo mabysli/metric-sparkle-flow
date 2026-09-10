@@ -70,8 +70,8 @@ export const AGENTS: DigisacAgent[] = [
   { id: "2e7d7458-a5e5-4160-8cbf-854e440b603a", name: "Fabiano Soares" },
   { id: "f92bb80c-0fe9-4283-ac4b-cfb8eb9208d8", name: "Eduardo Martins" },
   { id: "447992bc-8464-47a0-a74f-d4a90313b3c8", name: "Luiz Florindo" },
-  { id: "d894bdad-b0a0-4ed1-9ef2-b8f2c400b7cf", name: "Henry Porfirio" }
-  { id: "0a6c4aab-a1af-4131-81c1-dbb11727efed", name: "Agatha Otaviano" }
+  { id: "d894bdad-b0a0-4ed1-9ef2-b8f2c400b7cf", name: "Henry Porfirio" },
+  { id: "0a6c4aab-a1af-4131-81c1-dbb11727efed", name: "Agatha Otaviano" },
 ];
 
 /** Busca rápida de nome do atendente a partir do userId (com fallback). */
