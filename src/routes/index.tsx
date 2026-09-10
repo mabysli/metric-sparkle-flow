@@ -39,7 +39,6 @@ import {
   CalendarIcon,
   CheckCircle2,
   Clock,
-  MessageSquare,
   RefreshCw,
   Timer,
   TrendingUp,
