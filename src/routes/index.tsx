@@ -425,49 +425,35 @@ function ErrorBanner({ message, onRetry }: { message: string; onRetry: () => voi
 }
 
 /* ============================================================================
- * Grade de KPIs (os 5 cards de números do topo). Cada card é um <KpiCard />.
+ * Grade de KPIs (os cards de números do topo). Cada card é um <KpiCard />.
  * ========================================================================== */
 
 function KpiGrid({ data, loading }: { data: DashboardData | null; loading: boolean }) {
   // Valores padrão para enquanto os dados não chegaram (1º render).
   const empty = { value: 0, delta: 0 };
   const k = data?.kpis ?? {
-    total: empty,
-    open: empty,
     closed: empty,
     dailyAvg: empty,
     closedPerAgent: empty,
     tma: empty,
     pte: empty,
-    tme: empty,
     botWait: empty,
-    resolutionRate: empty,
-    contacts: empty,
-    messages: empty,
   };
   const fmt = (n: number) => n.toLocaleString("pt-BR");
   return (
-    // ❌ KPI "Chamados Transferidos" removido conforme solicitado.
-    // 🆕 (ALTERAÇÃO) Grade ampliada com TODAS as variáveis da imagem enviada.
-    //    Os KPIs de tempo chegam em SEGUNDOS e são formatados por
+    // ❌ KPIs "Chamados Transferidos", "Chamados Abertos", "Taxa de Resolução",
+    //    "Contatos" e "Mensagens" removidos conforme solicitado para deixar o
+    //    topo mais enxuto e focado nos indicadores operacionais principais.
+    // 🆕 Os KPIs de tempo chegam em SEGUNDOS e são formatados por
     //    `formatDuration` (ex.: "7h 6m", "10m 1s", "45s").
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-      {/* ❌ (ALTERAÇÃO DESTA REVISÃO) KPI "Total de Chamados / Atendido" removido:
-          na prática ele sempre repetia o valor de "Chamados Fechados". */}
-      <KpiCard label="Chamados Abertos" value={fmt(k.open.value)} delta={k.open.delta} icon={Activity} tone="warning" loading={loading} />
       <KpiCard label="Chamados Fechados" value={fmt(k.closed.value)} delta={k.closed.delta} icon={CheckCircle2} tone="success" loading={loading} />
       <KpiCard label="Média de Atendimentos / Dia" value={fmt(k.dailyAvg.value)} delta={k.dailyAvg.delta} icon={TrendingUp} tone="info" loading={loading} />
       <KpiCard label="Fechados por Atendente" value={fmt(k.closedPerAgent.value)} delta={k.closedPerAgent.delta} icon={UserCheck} tone="primary" loading={loading} />
-      {/* 🆕 Tempos (em segundos, formatados) */}
+      {/* Tempos (em segundos, formatados) */}
       <KpiCard label="TMA — Tempo Médio de Atendimento" value={formatDuration(k.tma.value)} delta={k.tma.delta} icon={Clock} tone="info" loading={loading} />
       <KpiCard label="PTE — Primeiro Tempo de Espera" value={formatDuration(k.pte.value)} delta={k.pte.delta} icon={Timer} tone="warning" loading={loading} />
-      {/* ❌ (ALTERAÇÃO DESTA REVISÃO) KPI "TME — Tempo Médio de Espera" removido:
-          estava sujando a leitura dos dados (sobrepunha PTE e Espera após o Bot). */}
       <KpiCard label="Espera após o Bot" value={formatDuration(k.botWait.value)} delta={k.botWait.delta} icon={Zap} tone="info" loading={loading} />
-      {/* 🆕 Qualidade e volume */}
-      <KpiCard label="Taxa de Resolução" value={`${k.resolutionRate.value.toFixed(1)}%`} delta={k.resolutionRate.delta} icon={Trophy} tone="success" loading={loading} />
-      <KpiCard label="Contatos" value={fmt(k.contacts.value)} delta={k.contacts.delta} icon={UserCheck} tone="info" loading={loading} />
-      <KpiCard label="Mensagens" value={fmt(k.messages.value)} delta={k.messages.delta} icon={MessageSquare} tone="primary" loading={loading} />
     </div>
   );
 }
