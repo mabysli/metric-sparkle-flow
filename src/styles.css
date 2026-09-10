@@ -138,6 +138,16 @@
   --chart-3: oklch(0.769 0.188 70.08);
   --chart-4: oklch(0.627 0.265 303.9);
   --chart-5: oklch(0.645 0.246 16.439);
+  /* 🆕 (ALTERAÇÃO) Tokens que existiam só no modo claro agora têm versão
+     escura: badges de sucesso/alerta/info, sombra dos cards e gradiente. */
+  --success: oklch(0.72 0.16 155);
+  --success-foreground: oklch(0.15 0.03 260);
+  --warning: oklch(0.82 0.15 80);
+  --warning-foreground: oklch(0.18 0.03 260);
+  --info: oklch(0.7 0.14 230);
+  --info-foreground: oklch(0.15 0.03 260);
+  --shadow-card: 0 1px 2px oklch(0 0 0 / 0.4), 0 4px 16px oklch(0 0 0 / 0.35);
+  --gradient-primary: linear-gradient(135deg, oklch(0.62 0.19 262), oklch(0.55 0.18 295));
   --sidebar: oklch(0.208 0.042 265.755);
   --sidebar-foreground: oklch(0.984 0.003 247.858);
   --sidebar-primary: oklch(0.488 0.243 264.376);
