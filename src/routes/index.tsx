@@ -216,8 +216,6 @@ function DashboardPage() {
           <AgentsChart data={data} loading={loading} />
         </div>
 
-        <TrendChart data={data} loading={loading} />
-
         {/* 🆕 (ALTERAÇÃO DESTA REVISÃO) Dois dashboards de progresso individual:
             o 2º (chamados fechados) e o 3º (métricas de tempo), cada um com
             um painel lateral de comparação com a equipe.

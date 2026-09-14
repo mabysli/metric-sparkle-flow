@@ -251,7 +251,6 @@ export function generateData(period: PeriodKey): DashboardData {
     },
     hourly,
     agents,
-    trend,
   };
 }
 

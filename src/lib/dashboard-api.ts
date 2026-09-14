@@ -83,7 +83,6 @@ import {
   type Agent,
   type AgentProgressPoint,
   type HourlyPoint,
-  type TrendPoint,
   generateData,
 } from "./dashboard-data";
 import { AGENTS, DEFAULT_DEPARTMENT_ID, DEFAULT_DEPARTMENT_IDS } from "./digisac-catalog";
@@ -528,15 +527,6 @@ async function fetchAgentsRanking(
     .sort((a, b) => b.closed - a.closed);
 }
 
-function toTrendPoint(t: DigisacTotals, index: number, total: number): TrendPoint {
-  return {
-    day: `D-${total - 1 - index}`,
-    abertos: t.openedTicketsCount,
-    fechados: t.closedTicketsCount,
-    // 👉 Não há campo "pendente" explícito — aproximamos como total menos fechados.
-    pendentes: Math.max(0, t.totalTicketsCount - t.closedTicketsCount),
-  };
-}
 
 /**
  * 🆕 (ALTERAÇÃO DESTA REVISÃO) Gráfico "Atendimentos ao Longo do Dia"
@@ -608,7 +598,7 @@ export async function fetchDashboard(range: DateRange, filters?: DashboardFilter
   const { startPeriod, endPeriod } = getRangeAsISO(range);
   const { startPeriod: prevStart, endPeriod: prevEnd } = getPreviousPeriodISO(range);
 
-  const [current, previous, agents, trend, hourly] = await Promise.all([
+  const [current, previous, agents, hourly] = await Promise.all([
     fetchTotals(startPeriod, endPeriod, filters),
     fetchTotals(prevStart, prevEnd, filters).catch(() => null),
     fetchAgentsRanking(startPeriod, endPeriod, filters),
@@ -627,7 +617,6 @@ export async function fetchDashboard(range: DateRange, filters?: DashboardFilter
     kpis: buildKpis(current, previous, agents.length, daysBetween(range)),
     hourly,
     agents,
-    trend,
   };
 }
 
