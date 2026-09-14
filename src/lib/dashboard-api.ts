@@ -42,8 +42,8 @@
  *
  *   👉 Se você testar `grouping=day` ou `grouping=hour` no Postman e a
  *      resposta vier como array, me manda um exemplo — aí eu confirmo o
- *      mapeamento de `toTrendPoint`/`toHourlyPoint` com precisão e a gente
- *      reduz bastante o número de chamadas.
+ *      mapeamento de `toHourlyPoint` com precisão e a gente reduz bastante
+ *      o número de chamadas.
  *
  * ⚠️ Todas essas chamadas extras (atendentes + fallback por dia/hora) têm
  * custo: no pior caso (período de 30 dias, sem `grouping` funcionando) dá
