@@ -433,14 +433,23 @@ function mergeTotals(a: DigisacTotals, b: DigisacTotals): DigisacTotals {
 async function fetchTotals(startPeriod: string, endPeriod: string, filters?: DashboardFilters): Promise<DigisacTotals> {
   // Departamento explícito → uma chamada só (sem soma).
   if (filters?.departmentId) {
-    return apiGet<DigisacTotals>(buildQuery(startPeriod, endPeriod, "", filters));
+    return normalizeTotals(await apiGet<unknown>(buildQuery(startPeriod, endPeriod, "", filters)));
   }
-  const results = await Promise.all(
+  // 🔧 (CORREÇÃO DESTA REVISÃO) Antes, se UM departamento falhasse, a soma
+  // inteira falhava e o número sumia da tela. Agora usamos `allSettled`:
+  // os departamentos que responderam continuam contando, e a falha só
+  // derruba o número se NENHUM deles responder.
+  const settled = await Promise.allSettled(
     DEFAULT_DEPARTMENT_IDS.map((departmentId) =>
-      apiGet<DigisacTotals>(buildQuery(startPeriod, endPeriod, "", { ...filters, departmentId }))
+      apiGet<unknown>(buildQuery(startPeriod, endPeriod, "", { ...filters, departmentId }))
     )
   );
-  return results.reduce(mergeTotals);
+  const ok = settled.filter((r) => r.status === "fulfilled") as PromiseFulfilledResult<unknown>[];
+  if (!ok.length) {
+    const firstError = settled.find((r) => r.status === "rejected") as PromiseRejectedResult | undefined;
+    throw firstError?.reason ?? new Error("Nenhum departamento respondeu à API.");
+  }
+  return ok.map((r) => normalizeTotals(r.value)).reduce(mergeTotals);
 }
 
 /** Tenta pedir já agrupado (day/hour). Pode devolver array OU um objeto único — tratamos os dois casos. */
@@ -450,28 +459,31 @@ async function fetchGrouped(
   grouping: "day" | "hour",
   filters?: DashboardFilters
 ): Promise<DigisacTotals | DigisacTotals[]> {
+  const normalizeAny = (raw: unknown): DigisacTotals | DigisacTotals[] =>
+    Array.isArray(raw) ? raw.map((item) => normalizeTotals(item)) : normalizeTotals(raw);
+
   // Departamento explícito → uma chamada só (sem soma).
   if (filters?.departmentId) {
-    return apiGet<DigisacTotals | DigisacTotals[]>(buildQuery(startPeriod, endPeriod, grouping, filters));
+    return normalizeAny(await apiGet<unknown>(buildQuery(startPeriod, endPeriod, grouping, filters)));
   }
-  // 🆕 (ALTERAÇÃO DESTA REVISÃO) Sem departamento explícito, consulta cada
-  // departamento padrão e SOMA os resultados (arrays são somados posição a
-  // posição — assume a mesma ordem de datas/horas entre os departamentos).
-  const results = await Promise.all(
+  // Sem departamento explícito, consulta cada departamento padrão e SOMA os
+  // resultados (arrays somados posição a posição). 🔧 Também aqui ignoramos
+  // departamentos que falharem, em vez de perder tudo.
+  const settled = await Promise.allSettled(
     DEFAULT_DEPARTMENT_IDS.map((departmentId) =>
-      apiGet<DigisacTotals | DigisacTotals[]>(buildQuery(startPeriod, endPeriod, grouping, { ...filters, departmentId }))
+      apiGet<unknown>(buildQuery(startPeriod, endPeriod, grouping, { ...filters, departmentId }))
     )
   );
+  const results = (settled.filter((r) => r.status === "fulfilled") as PromiseFulfilledResult<unknown>[]).map(
+    (r) => normalizeAny(r.value)
+  );
+  if (!results.length) throw new Error("Nenhum departamento respondeu à API (agrupado).");
+
   if (results.every(Array.isArray)) {
     const arrays = results as DigisacTotals[][];
     const length = Math.max(...arrays.map((a) => a.length));
     return Array.from({ length }, (_, i) =>
-      arrays.reduce((acc, arr) => (arr[i] ? mergeTotals(acc, arr[i]) : acc), {
-        sentMessagesCount: 0, receivedMessagesCount: 0, totalMessagesCount: 0,
-        openedTicketsCount: 0, closedTicketsCount: 0, totalTicketsCount: 0,
-        waitingTime: 0, waitingTimeAfterBot: 0, waitingTimeAvg: 0,
-        ticketTime: 0, contactsCount: 0,
-      } as DigisacTotals)
+      arrays.reduce((acc, arr) => (arr[i] ? mergeTotals(acc, arr[i]) : acc), emptyTotals())
     );
   }
   return (results as DigisacTotals[]).reduce(mergeTotals);
