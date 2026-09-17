@@ -614,8 +614,28 @@ async function fetchAgentsRanking(
           messages: t.totalMessagesCount || 0,                 // ← totalMessagesCount
         } satisfies Agent;
       } catch {
-        // Se um atendente falhar (ex.: sem tickets no período), não derruba o dashboard inteiro.
-        return null;
+        // 🔧 (CORREÇÃO DESTA REVISÃO) Antes o atendente SUMIA do ranking quando
+        // a chamada dele falhava — parecia que ele não existia. Agora ele
+        // continua na lista com os números zerados, deixando claro que não
+        // houve retorno para aquele período.
+        return {
+          name: agent.name,
+          closed: 0,
+          avgTimeMin: 0,
+          resolutionRate: 0,
+          avgResponseMin: 0,
+          firstContactMin: 0,
+          avgCloseMin: 0,
+          avgTimeSec: 0,
+          avgResponseSec: 0,
+          firstContactSec: 0,
+          avgCloseSec: 0,
+          total: 0,
+          open: 0,
+          pteSec: 0,
+          contacts: 0,
+          messages: 0,
+        } satisfies Agent;
       }
     })
   );
@@ -646,12 +666,17 @@ async function fetchHourlyPoints(
   const multiDay = daysBetween({ from: startPeriod.slice(0, 10), to: endPeriod.slice(0, 10) }) > 1;
 
   // Limite de segurança: até 72 blocos de hora (3 dias) → uma chamada por hora.
+  // 🔧 (CORREÇÃO) `allSettled`: uma hora que falhar vira 0 em vez de derrubar
+  // o gráfico inteiro.
   if (hours.length <= 72) {
-    const results = await Promise.all(hours.map((h) => fetchTotals(h.start, h.end, filters)));
-    return results.map((r, i) => ({ hour: hourLabel(hours[i].start, multiDay), count: r.totalTicketsCount }));
+    const settled = await Promise.allSettled(hours.map((h) => fetchTotals(h.start, h.end, filters)));
+    return settled.map((r, i) => ({
+      hour: hourLabel(hours[i].start, multiDay),
+      count: r.status === "fulfilled" ? r.value.totalTicketsCount : 0,
+    }));
   }
 
-  // Períodos longos: tenta o agrupamento por hora da API; se não vier array, zera.
+  // Períodos longos: tenta o agrupamento por hora da API.
   const grouped = await fetchGrouped(startPeriod, endPeriod, "hour", filters).catch(() => null);
   if (Array.isArray(grouped) && grouped.length) {
     return grouped.map((g, i) => ({
@@ -659,11 +684,19 @@ async function fetchHourlyPoints(
       count: g.totalTicketsCount,
     }));
   }
-  if (import.meta.env.DEV) {
-    // eslint-disable-next-line no-console
-    console.warn("[Digisac] grouping=hour não devolveu array — gráfico por hora desativado para períodos > 72h.");
-  }
-  return hours.map((h) => ({ hour: hourLabel(h.start, true), count: 0 }));
+
+  // 🔧 (CORREÇÃO DESTA REVISÃO) Confirmei chamando a API: com `grouping=hour`
+  // ela devolve UM objeto com o total do período, não uma lista por hora.
+  // Antes isso deixava o gráfico TODO ZERADO em períodos acima de 3 dias.
+  // Agora, nesses casos, mostramos o volume POR DIA (uma chamada por dia,
+  // até 62 dias) — sempre com dados reais, em vez de uma linha vazia.
+  const days = eachDayInRange(startPeriod, endPeriod).slice(0, 62);
+  const settledDays = await Promise.allSettled(days.map((d) => fetchTotals(d.start, d.end, filters)));
+  return settledDays.map((r, i) => {
+    const d = new Date(days[i].start);
+    const label = `${String(d.getUTCDate()).padStart(2, "0")}/${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+    return { hour: label, count: r.status === "fulfilled" ? r.value.totalTicketsCount : 0 };
+  });
 }
 
 // ---------------------------------------------------------------------------
