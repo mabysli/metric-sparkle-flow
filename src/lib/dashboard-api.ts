@@ -99,10 +99,13 @@ export interface DashboardFilters {
   departmentId?: string;
   userId?: string;
   serviceId?: string;
-  periodType?: "open" | "close";
-  status?: "all" | "open" | "close";
+  // 🔧 (CORREÇÃO DESTA REVISÃO) Os valores aqui estavam DIFERENTES dos que o
+  // código realmente envia na URL ("closeDate" e "closed"). Agora o tipo
+  // reflete exatamente o que a API aceita, evitando filtro inválido.
+  periodType?: "openDate" | "closeDate";
+  status?: "all" | "open" | "closed";
   departmentParticipation?: "last" | "middle";
-  userParticipation?: "last" | "middle";
+  userParticipation?: "all" | "last" | "middle";
 }
 
 /** Formato REAL confirmado da resposta de `/dashboard/general` (sem grouping). */
@@ -118,6 +121,43 @@ interface DigisacTotals {
   waitingTimeAvg: number;
   ticketTime: number;
   contactsCount: number;
+}
+
+/** Objeto de totais "zerado" — usado como base de soma e como fallback seguro. */
+function emptyTotals(): DigisacTotals {
+  return {
+    sentMessagesCount: 0,
+    receivedMessagesCount: 0,
+    totalMessagesCount: 0,
+    openedTicketsCount: 0,
+    closedTicketsCount: 0,
+    totalTicketsCount: 0,
+    waitingTime: 0,
+    waitingTimeAfterBot: 0,
+    waitingTimeAvg: 0,
+    ticketTime: 0,
+    contactsCount: 0,
+  };
+}
+
+/**
+ * 🔧 (CORREÇÃO DESTA REVISÃO) A API às vezes devolve campos como texto
+ * ("1035"), `null` ou omite algum deles — e aí as contas viravam `NaN` e a
+ * tela mostrava "-" ou valores quebrados. Aqui convertemos TUDO para número.
+ * Também aceitamos uma resposta que venha embrulhada em array de 1 item.
+ */
+function normalizeTotals(raw: unknown): DigisacTotals {
+  const src = (Array.isArray(raw) ? raw[0] : raw) as Record<string, unknown> | null | undefined;
+  const base = emptyTotals();
+  if (!src || typeof src !== "object") return base;
+  const num = (v: unknown) => {
+    const n = typeof v === "string" ? Number(v) : (v as number);
+    return Number.isFinite(n) ? n : 0;
+  };
+  (Object.keys(base) as (keyof DigisacTotals)[]).forEach((k) => {
+    base[k] = num(src[k]);
+  });
+  return base;
 }
 
 // Mantido só para o modo mock (converter dias -> "período" e escolher a semente).
@@ -295,23 +335,69 @@ function requestQueue<T>(task: () => Promise<T>): Promise<T> {
   });
 }
 
-async function rawGet<T>(path: string): Promise<T> {
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    method: "GET",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${API_TOKEN}`,
-    },
-  });
+/**
+ * 🔧 (CORREÇÃO DESTA REVISÃO) A chamada HTTP ganhou TEMPO LIMITE e NOVAS
+ * TENTATIVAS. Antes, uma falha momentânea (API lenta, 429 "muitas chamadas"
+ * ou erro 5xx) fazia o atendente/hora simplesmente sumir do gráfico, sem
+ * aviso. Agora tentamos de novo até 3 vezes, com espera crescente.
+ * A REQUISIÇÃO EM SI (URL, parâmetros e cabeçalhos) continua idêntica.
+ */
+const REQUEST_TIMEOUT_MS = 25_000;
+const MAX_RETRIES = 2;
+
+function delay(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function rawGet<T>(path: string, attempt = 0): Promise<T> {
+  let response: Response;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  try {
+    response = await fetch(`${API_BASE_URL}${path}`, {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${API_TOKEN}`,
+      },
+      signal: controller.signal,
+    });
+  } catch (err) {
+    if (attempt < MAX_RETRIES) {
+      await delay(500 * 2 ** attempt);
+      return rawGet<T>(path, attempt + 1);
+    }
+    throw new Error(
+      `Não foi possível falar com a API (${path}) — verifique a conexão ou o tempo de resposta. ${String(err)}`
+    );
+  } finally {
+    clearTimeout(timer);
+  }
 
   if (!response.ok) {
+    // 429 (limite de chamadas) e 5xx são temporários → vale tentar de novo.
+    if ((response.status === 429 || response.status >= 500) && attempt < MAX_RETRIES) {
+      await delay(800 * 2 ** attempt);
+      return rawGet<T>(path, attempt + 1);
+    }
     const errorBody = await response.text().catch(() => "");
+    const hint =
+      response.status === 401 || response.status === 403
+        ? " — token inválido ou sem permissão (confira VITE_API_TOKEN)."
+        : "";
     throw new Error(
-      `Falha ao chamar ${path} — HTTP ${response.status}${errorBody ? ` — ${errorBody}` : ""}`
+      `Falha ao chamar ${path} — HTTP ${response.status}${hint}${errorBody ? ` — ${errorBody}` : ""}`
     );
   }
 
-  return (await response.json()) as T;
+  // 🔧 Resposta vazia ou não-JSON não pode derrubar a tela.
+  const text = await response.text();
+  if (!text.trim()) return null as T;
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    throw new Error(`Resposta inesperada da API em ${path} (não é JSON): ${text.slice(0, 120)}`);
+  }
 }
 
 /**
