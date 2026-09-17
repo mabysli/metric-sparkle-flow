@@ -27,6 +27,10 @@ export const DEPARTMENTS: DigisacDepartment[] = [
   { id: "aa80cf14-8976-41e9-a597-538399159751", name: "Fila Suporte - Digisac" },
   { id: "67c13b3e-f547-4f24-b4cf-8544a79ef2b2", name: "Robô" },
   { id: "c320f011-4e94-4b8f-8e2f-7489d8dcc0d2", name: "Fila Atendimento" },
+  // 🆕 (ALTERAÇÃO DESTA REVISÃO) Novos departamentos adicionados a pedido.
+  { id: "75af2a23-60a2-4c9c-a6cd-e5e44259e8da", name: "Cluster" },
+  { id: "db29fcee-6acd-41a1-8f1a-b7dd1316041c", name: "Sem avaliação" },
+  { id: "59b1b9b1-bf14-4c3b-bcc8-cded50e8bc46", name: "Banimento" },
 ];
 
 /**
@@ -39,17 +43,22 @@ export const DEPARTMENTS: DigisacDepartment[] = [
 export const DEFAULT_DEPARTMENT_ID = DEPARTMENTS[0].id; // "Fila Suporte - Digisac"
 
 /**
- * 🆕 (ALTERAÇÃO DESTA REVISÃO) Departamentos consultados por padrão.
- * Antes era só "Fila Suporte - Digisac"; agora os totais do dashboard são a
- * SOMA destes dois departamentos (o dashboard-api faz uma chamada por
- * departamento e junta os resultados — ver `fetchTotals`/`mergeTotals`).
+ * Departamentos consultados por padrão. Os totais do dashboard são a SOMA
+ * de todos estes (o dashboard-api faz uma chamada por departamento e junta
+ * os resultados — ver `fetchTotals`/`mergeTotals`).
+ * 🆕 (ALTERAÇÃO DESTA REVISÃO) Adicionados "Cluster", "Sem avaliação" e
+ * "Banimento" à soma padrão, junto com "Fila Suporte - Digisac", "Robô" e
+ * "Fila Atendimento".
  * Para consultar um departamento específico, passe `departmentId` em
  * `DashboardFilters` (aí só ele é usado).
  */
 export const DEFAULT_DEPARTMENT_IDS: string[] = [
   "aa80cf14-8976-41e9-a597-538399159751", // Fila Suporte - Digisac
-  "67c13b3e-f547-4f24-b4cf-8544a79ef2b2", // fila robo
-  "c320f011-4e94-4b8f-8e2f-7489d8dcc0d2", // Fila atendimento
+  "67c13b3e-f547-4f24-b4cf-8544a79ef2b2", // Robô
+  "c320f011-4e94-4b8f-8e2f-7489d8dcc0d2", // Fila Atendimento
+  "75af2a23-60a2-4c9c-a6cd-e5e44259e8da", // Cluster
+  "db29fcee-6acd-41a1-8f1a-b7dd1316041c", // Sem avaliação
+  "59b1b9b1-bf14-4c3b-bcc8-cded50e8bc46", // Banimento
 ];
 
 /**

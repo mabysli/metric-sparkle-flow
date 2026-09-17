@@ -11,9 +11,15 @@
  *   3. Atualizar automaticamente os dados a cada 60 segundos.
  *   4. Renderizar o cabeçalho, os KPIs, os gráficos e o ranking.
  *
- * Está organizada em pequenos sub-componentes (Header, KpiGrid, HourlyChart...)
+ * Está organizada em pequenos sub-componentes (Header, KpiGrid, RankingTable...)
  * todos definidos no MESMO arquivo para facilitar a leitura linear por quem
  * está começando. Em um projeto maior, cada um viraria seu próprio arquivo.
+ *
+ * 🆕 (ALTERAÇÃO DESTA REVISÃO) O dashboard "Atendimentos ao Longo do Dia"
+ * (volume de chamados por hora) foi REMOVIDO a pedido. No lugar dele, no
+ * topo da página, subiu o "Ranking de Atendentes", que antes ficava mais
+ * abaixo ao lado do "Resumo Executivo". O "Resumo Executivo" continua na
+ * página, agora sozinho na própria linha.
  * ============================================================================
  */
 
@@ -104,9 +110,8 @@ function defaultRange(): DateRange {
  * Qualquer outro valor = um departamento específico → só ele é consultado.
  */
 const DEPARTMENT_OPTIONS = [
-  { value: "", label: "Ambos os departamentos" },
-  // Só entram no seletor os departamentos consultados por padrão
-  // (o "Robô" fica de fora, pois não faz parte das métricas).
+  { value: "", label: "Todos os departamentos" },
+  // Só entram no seletor os departamentos consultados por padrão.
   ...DEFAULT_DEPARTMENT_IDS.map((id) => ({
     value: id,
     label: DEPARTMENTS.find((d) => d.id === id)?.name ?? id,
@@ -137,7 +142,7 @@ function DashboardPage() {
   //    de datas escolhido em um calendário no cabeçalho.
   const [range, setRange] = useState<DateRange>(defaultRange);
   // 🆕 (ALTERAÇÃO DESTA REVISÃO) Filtro de DEPARTAMENTO.
-  //    "" = ambos (a API é consultada por departamento e os totais somados);
+  //    "" = todos (a API é consultada por departamento e os totais somados);
   //    um ID = somente aquele departamento.
   const [departmentId, setDepartmentId] = useState<string>("");
   const [data, setData] = useState<DashboardData | null>(null);
@@ -210,8 +215,12 @@ function DashboardPage() {
             os próprios cards exibem seus skeletons quando `loading` é true. */}
         <KpiGrid data={data} loading={loading} />
 
+        {/* 🆕 (ALTERAÇÃO DESTA REVISÃO) No lugar do antigo gráfico
+            "Atendimentos ao Longo do Dia" (removido), agora fica o
+            "Ranking de Atendentes", mantendo a mesma proporção de largura
+            (2/3) ao lado de "Produtividade dos Atendentes" (1/3). */}
         <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
-          <HourlyChart data={data} loading={loading} />
+          <RankingTable data={data} loading={loading} className="xl:col-span-2" />
           <AgentsChart data={data} loading={loading} />
         </div>
 
@@ -221,11 +230,9 @@ function DashboardPage() {
             🆕 Também recebem o departamento filtrado no cabeçalho. */}
         <AgentProgressSection data={data} range={range} departmentId={departmentId} />
 
-
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-          <RankingTable data={data} loading={loading} className="lg:col-span-2" />
-          <InsightsPanel data={data} loading={loading} />
-        </div>
+        {/* 🆕 (ALTERAÇÃO DESTA REVISÃO) "Resumo Executivo" agora sozinho na
+            linha, já que o "Ranking de Atendentes" subiu para o topo. */}
+        <InsightsPanel data={data} loading={loading} />
       </main>
     </div>
   );
@@ -248,7 +255,7 @@ function Header({
   range: DateRange;
   onRangeChange: (r: DateRange) => void;
   // 🆕 (ALTERAÇÃO DESTA REVISÃO) Filtro de departamento:
-  // "" = ambos; um ID = apenas aquele departamento.
+  // "" = todos; um ID = apenas aquele departamento.
   departmentId: string;
   onDepartmentChange: (id: string) => void;
   onRefresh: () => void;
@@ -367,7 +374,7 @@ function Header({
               </div>
             </PopoverContent>
           </Popover>
-          {/* 🆕 (ALTERAÇÃO) Seletor de DEPARTAMENTO: "Ambos" soma os dois
+          {/* 🆕 (ALTERAÇÃO) Seletor de DEPARTAMENTO: "Todos" soma todos os
               departamentos padrão; escolher um filtra só ele em TODAS as
               requisições (ver `fetchTotals`/`fetchGrouped` na API). */}
           <select
@@ -473,47 +480,6 @@ const TOOLTIP_STYLE = {
 /** Placeholder animado exibido enquanto os dados estão sendo carregados. */
 function SkeletonChart({ height = 260 }: { height?: number }) {
   return <div className="animate-pulse rounded-lg bg-muted" style={{ height }} />;
-}
-
-/* ----------------------------- Gráfico de Linha --------------------------- */
-// Volume de atendimentos por hora do dia (00h–23h).
-function HourlyChart({ data, loading }: { data: DashboardData | null; loading: boolean }) {
-  return (
-    <ChartCard
-      title="Atendimentos ao Longo do Dia"
-      subtitle="Volume de chamados por hora"
-      className="xl:col-span-2"
-    >
-      {loading || !data ? (
-        <SkeletonChart />
-      ) : (
-        <ResponsiveContainer width="100%" height={280}>
-          <LineChart data={data.hourly} margin={{ top: 5, right: 16, left: -8, bottom: 0 }}>
-            <defs>
-              {/* Gradiente aplicado à linha do gráfico */}
-              <linearGradient id="lineGrad" x1="0" y1="0" x2="1" y2="0">
-                <stop offset="0%" stopColor="oklch(0.55 0.2 260)" />
-                <stop offset="100%" stopColor="oklch(0.55 0.18 290)" />
-              </linearGradient>
-            </defs>
-            <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" vertical={false} />
-            <XAxis dataKey="hour" stroke="var(--color-muted-foreground)" fontSize={11} tickLine={false} axisLine={false} />
-            <YAxis stroke="var(--color-muted-foreground)" fontSize={11} tickLine={false} axisLine={false} />
-            <Tooltip contentStyle={TOOLTIP_STYLE} cursor={{ stroke: "var(--color-border)" }} />
-            <Line
-              type="monotone"
-              dataKey="count"
-              name="Atendimentos"
-              stroke="url(#lineGrad)"
-              strokeWidth={2.5}
-              dot={{ r: 0 }}
-              activeDot={{ r: 5, fill: "oklch(0.55 0.2 260)" }}
-            />
-          </LineChart>
-        </ResponsiveContainer>
-      )}
-    </ChartCard>
-  );
 }
 
 /* ----------------------- Gráfico de Barras (horizontal) ------------------- */
@@ -1062,4 +1028,3 @@ function AgentProgressSection({ data, range, departmentId }: { data: DashboardDa
     </div>
   );
 }
-
