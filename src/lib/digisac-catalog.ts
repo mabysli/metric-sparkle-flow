@@ -9,7 +9,7 @@
  *      da API venha só com IDs.
  *
  * Os IDs abaixo são os reais, confirmados (departamento "Fila Suporte -
- * Digisac" e os 14 atendentes com seus `userId`).
+ * Digisac" e os atendentes com seus `userId`).
  * ============================================================================
  */
 
@@ -46,9 +46,6 @@ export const DEFAULT_DEPARTMENT_ID = DEPARTMENTS[0].id; // "Fila Suporte - Digis
  * Departamentos consultados por padrão. Os totais do dashboard são a SOMA
  * de todos estes (o dashboard-api faz uma chamada por departamento e junta
  * os resultados — ver `fetchTotals`/`mergeTotals`).
- * 🆕 (ALTERAÇÃO DESTA REVISÃO) Adicionados "Cluster", "Sem avaliação" e
- * "Banimento" à soma padrão, junto com "Fila Suporte - Digisac", "Robô" e
- * "Fila Atendimento".
  * Para consultar um departamento específico, passe `departmentId` em
  * `DashboardFilters` (aí só ele é usado).
  */
@@ -65,6 +62,10 @@ export const DEFAULT_DEPARTMENT_IDS: string[] = [
  * Lista real de atendentes (nome + userId) usada por `fetchAgentsRanking`
  * em `dashboard-api.ts` para montar o ranking — uma chamada por atendente,
  * filtrando `/dashboard/general` por `userId`.
+ *
+ * 🆕 (ALTERAÇÃO DESTA REVISÃO) "Agatha Otaviano" foi REMOVIDA desta lista
+ * a pedido — ela não deve mais aparecer no ranking, no gráfico de
+ * produtividade nem em nenhum seletor de atendente do dashboard.
  */
 export const AGENTS: DigisacAgent[] = [
   { id: "296e0d4c-a546-4746-b6da-5afd9a62f2d4", name: "Manu Oliveira" },
@@ -80,7 +81,6 @@ export const AGENTS: DigisacAgent[] = [
   { id: "f92bb80c-0fe9-4283-ac4b-cfb8eb9208d8", name: "Eduardo Martins" },
   { id: "447992bc-8464-47a0-a74f-d4a90313b3c8", name: "Luiz Florindo" },
   { id: "d894bdad-b0a0-4ed1-9ef2-b8f2c400b7cf", name: "Henry Porfirio" },
-  { id: "0a6c4aab-a1af-4131-81c1-dbb11727efed", name: "Agatha Otaviano" },
 ];
 
 /** Busca rápida de nome do atendente a partir do userId (com fallback). */

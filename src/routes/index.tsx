@@ -15,11 +15,11 @@
  * todos definidos no MESMO arquivo para facilitar a leitura linear por quem
  * está começando. Em um projeto maior, cada um viraria seu próprio arquivo.
  *
- * 🆕 (ALTERAÇÃO DESTA REVISÃO) O dashboard "Atendimentos ao Longo do Dia"
- * (volume de chamados por hora) foi REMOVIDO a pedido. No lugar dele, no
- * topo da página, subiu o "Ranking de Atendentes", que antes ficava mais
- * abaixo ao lado do "Resumo Executivo". O "Resumo Executivo" continua na
- * página, agora sozinho na própria linha.
+ * 🆕 (ALTERAÇÃO DESTA REVISÃO) O "Resumo Executivo" (antes sozinho numa
+ * linha lá embaixo, depois do "Progresso do Atendente") agora fica
+ * encaixado LOGO ABAIXO do dashboard "Produtividade dos Atendentes", na
+ * mesma coluna da direita (empilhados com `space-y-6`), mantendo o
+ * "Ranking de Atendentes" ocupando as 2/3 da esquerda.
  * ============================================================================
  */
 
@@ -215,13 +215,16 @@ function DashboardPage() {
             os próprios cards exibem seus skeletons quando `loading` é true. */}
         <KpiGrid data={data} loading={loading} />
 
-        {/* 🆕 (ALTERAÇÃO DESTA REVISÃO) No lugar do antigo gráfico
-            "Atendimentos ao Longo do Dia" (removido), agora fica o
-            "Ranking de Atendentes", mantendo a mesma proporção de largura
-            (2/3) ao lado de "Produtividade dos Atendentes" (1/3). */}
+        {/* 🆕 (ALTERAÇÃO DESTA REVISÃO) "Ranking de Atendentes" continua
+            ocupando 2/3 da largura à esquerda. À direita (1/3), o
+            "Resumo Executivo" foi encaixado LOGO ABAIXO da "Produtividade
+            dos Atendentes", empilhados na mesma coluna. */}
         <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
           <RankingTable data={data} loading={loading} className="xl:col-span-2" />
-          <AgentsChart data={data} loading={loading} />
+          <div className="space-y-6">
+            <AgentsChart data={data} loading={loading} />
+            <InsightsPanel data={data} loading={loading} />
+          </div>
         </div>
 
         {/* 🆕 (ALTERAÇÃO DESTA REVISÃO) Dois dashboards de progresso individual:
@@ -229,10 +232,6 @@ function DashboardPage() {
             um painel lateral de comparação com a equipe.
             🆕 Também recebem o departamento filtrado no cabeçalho. */}
         <AgentProgressSection data={data} range={range} departmentId={departmentId} />
-
-        {/* 🆕 (ALTERAÇÃO DESTA REVISÃO) "Resumo Executivo" agora sozinho na
-            linha, já que o "Ranking de Atendentes" subiu para o topo. */}
-        <InsightsPanel data={data} loading={loading} />
       </main>
     </div>
   );
