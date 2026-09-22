@@ -30,9 +30,15 @@
  *
  *   2) Para o RANKING DE ATENDENTES, fazemos uma chamada por atendente
  *      (filtrando por `userId`, usando a lista real em `digisac-catalog.ts`)
- *      e usamos o valor EXATO que a API devolve para aquele atendente/
- *      período — SEM somar múltiplos departamentos (ver `fetchTotalsSingle`
- *      e o comentário dentro de `fetchAgentsRanking` logo abaixo).
+ *      e — 🔧 (CORREÇÃO DESTA REVISÃO) — voltamos a usar `fetchTotals`
+ *      (em vez de `fetchTotalsSingle`, removida): quando nenhum
+ *      departamento é escolhido no seletor do cabeçalho, o ranking agora
+ *      SOMA as filas de `DEFAULT_DEPARTMENT_IDS`, exatamente como os KPIs
+ *      do topo e o gráfico por hora já faziam. Antes, o ranking sempre
+ *      batia só na fila padrão única (`DEFAULT_DEPARTMENT_ID`, "Fila
+ *      Suporte - Digisac"), então escolher "Todos os departamentos" no
+ *      seletor não tinha efeito nenhum sobre os números do ranking — era
+ *      sempre a mesma fila. Ver `fetchAgentsRanking` logo abaixo.
  *
  *   3) Para a TENDÊNCIA POR DIA e o GRÁFICO POR HORA, tentamos primeiro usar
  *      o parâmetro `grouping` (ex.: `grouping=day`, `grouping=hour`) — SE a
@@ -51,7 +57,11 @@
  * custo: no pior caso (período de 30 dias, sem `grouping` funcionando) dá
  * ~1 (atual) + 1 (anterior, p/ delta) + 13 (atendentes) + 30 (tendência) =
  * ~45 chamadas em paralelo. Funciona, mas se ficar lento vale a pena
- * confirmar se `grouping` resolve isso com menos chamadas.
+ * confirmar se `grouping` resolve isso com menos chamadas. Com a correção
+ * desta revisão, cada atendente sem filtro de departamento passa a gerar
+ * até 6 chamadas (uma por fila padrão) em vez de 1 — o pior caso sobe
+ * proporcionalmente, mas continua dentro da fila de concorrência limitada
+ * (`MAX_CONCURRENT`, ver abaixo).
  *
  * --- ARQUIVO .env NECESSÁRIO NA RAIZ DO PROJETO ---------------------------
  *
@@ -63,16 +73,14 @@
  * ----------------------------------------------------------------------
  * 🔧 Notas desta revisão
  * ----------------------------------------------------------------------
- *   - 🆕 O RANKING DE ATENDENTES ("Ranking de Atendentes" e "Produtividade
- *     dos Atendentes") passou a usar `fetchTotalsSingle`: UMA chamada por
- *     atendente, com o valor de `closedTicketsCount` (e demais campos)
- *     EXATAMENTE como a API devolveu — sem somar vários departamentos
- *     como o restante do dashboard (KPIs do topo, gráfico por hora) faz.
- *     Antes, quando nenhum departamento era escolhido no filtro do
- *     cabeçalho, o ranking também somava os 6 departamentos padrão
- *     (`DEFAULT_DEPARTMENT_IDS`) — isso foi removido a pedido: o número
- *     de "Fechados" de cada atendente no ranking agora é sempre o
- *     resultado puro e direto da requisição pra aquele `userId`.
+ *   - 🆕 CORREÇÃO: o RANKING DE ATENDENTES ("Ranking de Atendentes" e
+ *     "Produtividade dos Atendentes") volta a somar TODAS as filas de
+ *     `DEFAULT_DEPARTMENT_IDS` quando nenhum departamento é escolhido no
+ *     seletor do cabeçalho — igual ao restante do dashboard. A função
+ *     `fetchTotalsSingle` (que fixava sempre uma única fila) foi removida;
+ *     `fetchAgentsRanking` agora chama `fetchTotals` como as demais partes
+ *     do dashboard. Escolher uma fila específica no seletor continua
+ *     funcionando normalmente (só ela é consultada).
  *   - O filtro de "período fixo" (`PeriodKey`) foi trocado por um
  *     calendário de intervalo (`DateRange`, de/até). `fetchDashboard` agora
  *     recebe `DateRange` e converte internamente para `startPeriod`/
@@ -421,9 +429,10 @@ async function rawGet<T>(path: string, attempt = 0): Promise<T> {
  *   - `waitingTimeAvg` já é uma MÉDIA, então não pode ser somada — fazemos
  *     uma média PONDERADA pelo nº de tickets de cada departamento.
  *
- * Usada pelos KPIs do topo e pelo gráfico por hora/dia (`fetchTotals`), que
- * PRECISAM somar os departamentos padrão. O ranking de atendentes NÃO usa
- * mais esta soma — ver `fetchTotalsSingle` logo abaixo.
+ * Usada pelos KPIs do topo, pelo gráfico por hora/dia e — 🔧 (CORREÇÃO
+ * DESTA REVISÃO) — TAMBÉM pelo ranking de atendentes (`fetchAgentsRanking`),
+ * que voltou a usar `fetchTotals` para somar as filas padrão quando nenhum
+ * departamento é escolhido no seletor do cabeçalho.
  */
 function mergeTotals(a: DigisacTotals, b: DigisacTotals): DigisacTotals {
   const sum = (x?: number, y?: number) => (x || 0) + (y || 0);
@@ -466,28 +475,6 @@ async function fetchTotals(startPeriod: string, endPeriod: string, filters?: Das
     throw firstError?.reason ?? new Error("Nenhum departamento respondeu à API.");
   }
   return ok.map((r) => normalizeTotals(r.value)).reduce(mergeTotals);
-}
-
-/**
- * 🆕 (ALTERAÇÃO DESTA REVISÃO) UMA ÚNICA chamada a `/dashboard/general`,
- * SEM nenhuma soma entre departamentos — usada exclusivamente pelo
- * RANKING DE ATENDENTES (`fetchAgentsRanking`).
- *
- * Diferente de `fetchTotals` (que, sem `departmentId` explícito, soma os
- * 6 departamentos padrão em `DEFAULT_DEPARTMENT_IDS`), esta função só
- * repassa `filters` direto pra `buildQuery`: se `filters.departmentId`
- * vier do seletor do cabeçalho, usa ele; se não vier, `buildQuery` aplica
- * o ÚNICO department padrão real da requisição (`DEFAULT_DEPARTMENT_ID`,
- * "Fila Suporte - Digisac"). Ou seja: o número de "Fechados" de cada
- * atendente no ranking é EXATAMENTE o que a API devolveu para aquele
- * `userId` + período — nenhum cálculo ou soma adicional em cima.
- */
-async function fetchTotalsSingle(
-  startPeriod: string,
-  endPeriod: string,
-  filters?: DashboardFilters
-): Promise<DigisacTotals> {
-  return normalizeTotals(await apiGet<unknown>(buildQuery(startPeriod, endPeriod, "", filters)));
 }
 
 /** Tenta pedir já agrupado (day/hour). Pode devolver array OU um objeto único — tratamos os dois casos. */
@@ -601,14 +588,19 @@ function buildKpis(current: DigisacTotals, previous: DigisacTotals | null, agent
  * Monta o ranking chamando `/dashboard/general` uma vez por atendente
  * (filtrando por `userId`), usando a lista real de `digisac-catalog.ts`.
  *
- * 🆕 (ALTERAÇÃO DESTA REVISÃO) Cada chamada usa `fetchTotalsSingle` — UMA
- * requisição por atendente, SEM somar departamentos. O campo `closed`
- * (e todos os outros) vem exatamente do que a API devolveu para aquele
- * `userId` no período filtrado (respeitando o departamento escolhido no
- * seletor do cabeçalho, se houver um selecionado).
+ * 🔧 (CORREÇÃO DESTA REVISÃO) Voltou a usar `fetchTotals` (em vez de
+ * `fetchTotalsSingle`, removida). Diferença prática:
+ *   - Se `filters.departmentId` vier do seletor do cabeçalho → só aquela
+ *     fila é consultada (igual antes).
+ *   - Se NENHUM departamento estiver selecionado ("Todos os departamentos")
+ *     → agora SOMA as filas de `DEFAULT_DEPARTMENT_IDS` (Fila Suporte,
+ *     Robô, Fila Atendimento, Cluster, Sem avaliação, Banimento), em vez
+ *     de olhar só para a fila padrão única. Isso é o que fazia o ranking
+ *     não bater com os KPIs do topo quando "Todos os departamentos"
+ *     estava selecionado.
  *
- * Mapeamento das novas métricas de tempo (a API não tem campos com esses
- * nomes exatos, então aproximamos a partir do que ela devolve):
+ * Mapeamento das métricas de tempo (a API não tem campos com esses nomes
+ * exatos, então aproximamos a partir do que ela devolve):
  *   - avgResponseMin  ← `waitingTimeAvg` (já vem como média, só convertemos p/ minutos)
  *   - firstContactMin ← `waitingTimeAfterBot` dividido pelo nº de chamados fechados
  *   - avgCloseMin     ← `ticketTime` dividido pelo nº de chamados fechados
@@ -624,9 +616,10 @@ async function fetchAgentsRanking(
   const results = await Promise.all(
     AGENTS.map(async (agent) => {
       try {
-        // 🆕 (ALTERAÇÃO DESTA REVISÃO) `fetchTotalsSingle` em vez de
-        // `fetchTotals` — nenhuma soma entre departamentos aqui.
-        const t = await fetchTotalsSingle(startPeriod, endPeriod, { ...filters, userId: agent.id });
+        // 🔧 (CORREÇÃO DESTA REVISÃO) `fetchTotals` em vez de
+        // `fetchTotalsSingle` — agora soma as filas padrão quando nenhum
+        // departamento é escolhido no filtro, igual ao resto do dashboard.
+        const t = await fetchTotals(startPeriod, endPeriod, { ...filters, userId: agent.id });
         const closedCount = t.closedTicketsCount || 0;
         const totalCount = t.totalTicketsCount || 0;
         // 🆕 (ALTERAÇÃO) Guardamos os tempos em SEGUNDOS (sem arredondar para
@@ -810,11 +803,9 @@ export async function fetchDashboard(range: DateRange, filters?: DashboardFilter
  * `grouping=day` + `userId` passar a devolver um array, dá para trocar o
  * laço abaixo por uma única chamada — o formato de saída continua o mesmo.
  *
- * ⚠️ Diferente do ranking principal, este gráfico ainda usa `fetchTotals`
- * (que soma os departamentos padrão quando nenhum é escolhido no filtro),
- * pois aqui o pedido foi só sobre o RANKING/PRODUTIVIDADE. Avise se quiser
- * o mesmo comportamento de "requisição única, sem soma" aplicado aqui
- * também.
+ * Assim como o ranking principal (após a correção desta revisão), este
+ * gráfico usa `fetchTotals` (que soma os departamentos padrão quando
+ * nenhum é escolhido no filtro), então os dois ficam consistentes entre si.
  */
 export async function fetchAgentProgress(
   range: DateRange,
