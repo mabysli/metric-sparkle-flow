@@ -57,7 +57,7 @@ import { ChartCard } from "@/components/dashboard/ChartCard";
 import { ThemeToggle } from "@/components/dashboard/ThemeToggle";
 import { type AgentProgressPoint, type DashboardData, type DateRange } from "@/lib/dashboard-data";
 import { formatDuration } from "@/lib/format-duration"; // 🆕 formata segundos ("10m 1s")
-import { fetchAgentProgress, fetchDashboard } from "@/lib/dashboard-api"; // 🔌 integração com a API
+import { fetchAgentProgress, fetchDashboard, USE_MOCK } from "@/lib/dashboard-api"; // 🔌 integração com a API
 // 🆕 (ALTERAÇÃO DESTA REVISÃO) Catálogo de departamentos para montar o
 //    seletor de filtro por departamento (ver `DEPARTMENT_OPTIONS` abaixo).
 import { DEFAULT_DEPARTMENT_IDS, DEPARTMENTS } from "@/lib/digisac-catalog";
@@ -201,6 +201,12 @@ function DashboardPage() {
         onDepartmentChange={setDepartmentId}
         onRefresh={() => load()}
       />
+
+      {USE_MOCK && (
+        <p className="px-3 pt-3 text-sm text-muted-foreground sm:px-5 lg:px-8">
+          Modo demonstração · dados simulados
+        </p>
+      )}
 
       {/* 🆕 (ALTERAÇÃO) Layout FULL-WIDTH: em vez de travar o conteúdo em uma
           largura fixa central, usamos toda a largura da tela com uma margem

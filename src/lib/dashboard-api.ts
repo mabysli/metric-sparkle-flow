@@ -63,12 +63,8 @@
  * proporcionalmente, mas continua dentro da fila de concorrência limitada
  * (`MAX_CONCURRENT`, ver abaixo).
  *
- * --- ARQUIVO .env NECESSÁRIO NA RAIZ DO PROJETO ---------------------------
- *
- *      VITE_API_BASE_URL="https://ikatec.digisac.chat/api/v1"
- *      VITE_API_TOKEN="SEU_TOKEN_AQUI"
- *
- *   ⚠️ ".env" no .gitignore. Nunca deixe o token literal no código.
+ * Builds publicados usam dados simulados. A integração atual só pode ser
+ * usada em desenvolvimento local, com configuração explícita.
  *
  * ----------------------------------------------------------------------
  * 🔧 Notas desta revisão
@@ -107,13 +103,9 @@ import {
 } from "./dashboard-data";
 import { AGENTS, DEFAULT_DEPARTMENT_ID, DEFAULT_DEPARTMENT_IDS } from "./digisac-catalog";
 
-const USE_MOCK = false;
-
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "https://ikatec.digisac.chat/api/v1";
-// ⚠️ Token colocado direto aqui a pedido — se este arquivo for pra um
-// repositório Git ou for compartilhado, ele fica exposto para quem tiver
-// acesso. Se quiser reverter, troque o fallback de volta para "".
-const API_TOKEN = import.meta.env.VITE_API_TOKEN ?? "07df67a7ceb16fbf4d334d540ec26b5fb71f83fd";
+const API_BASE_URL = import.meta.env.DEV ? import.meta.env.VITE_API_BASE_URL : undefined;
+const API_TOKEN = import.meta.env.DEV ? import.meta.env.VITE_API_TOKEN : undefined;
+export const USE_MOCK = !API_BASE_URL || !API_TOKEN;
 
 export interface DashboardFilters {
   departmentId?: string;
@@ -762,7 +754,7 @@ export async function fetchDashboard(range: DateRange, filters?: DashboardFilter
   }
 
   // -----------------------------------------------------------------------
-  // 🌐 MODO PRODUÇÃO — chama a API real (`/dashboard/general`) com o
+  // 🌐 MODO DE DESENVOLVIMENTO COM DADOS REAIS — chama a API (`/dashboard/general`) com o
   // intervalo de datas convertido para `startPeriod`/`endPeriod` ISO.
   // -----------------------------------------------------------------------
   const { startPeriod, endPeriod } = getRangeAsISO(range);
